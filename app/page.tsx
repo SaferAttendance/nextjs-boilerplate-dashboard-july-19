@@ -1,117 +1,161 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Head from 'next/head';
+import { motion } from 'framer-motion';
 
-// Montserrat font import and Tailwind full-width layout
-export default function Home(): JSX.Element {
+/**
+ * xAI‑grade Admin Dashboard
+ * --------------------------------------------------
+ * • Desktop‑first 100% width layout
+ * • Dark‑mode toggle (Musk‑approved)
+ * • Framer‑motion hover & entrance animations
+ * • Glassmorphism + vibrant space‑grade gradients
+ * • Tailwind v3 (JIT)
+ * • Montserrat font stack
+ */
+
+// Dashboard Action Card
+interface ActionCardProps {
+  icon: string;
+  title: string;
+  desc: string;
+  href: string;
+  delay: number;
+}
+
+const ActionCard: React.FC<ActionCardProps> = ({ icon, title, desc, href, delay }) => (
+  <Link href={href}>
+    <motion.a
+      initial={{ y: 40, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ delay, type: 'spring', stiffness: 120 }}
+      whileHover={{ scale: 1.05 }}
+      className="
+        flex flex-col justify-between h-full
+        bg-white/70 dark:bg-white/10 backdrop-blur-xl
+        border border-white/30 dark:border-white/20
+        rounded-2xl p-6 shadow-xl
+        transition-colors duration-300
+      "
+    >
+      <div className="flex items-center space-x-4 mb-4">
+        <span className="text-4xl">{icon}</span>
+        <h3 className="text-xl font-bold">{title}</h3>
+      </div>
+      <p className="text-gray-600 dark:text-gray-400 flex-1">{desc}</p>
+      <div className="mt-6 text-blue-600 dark:text-blue-400 font-semibold">Go →</div>
+    </motion.a>
+  </Link>
+);
+
+export default function Home() {
+  const [dark, setDark] = useState(false);
+
   return (
-    <>
+    <div className={dark ? 'dark' : ''}>
       <Head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;800&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;800&display=swap" rel="stylesheet" />
+        <title>xAI Admin Dashboard</title>
       </Head>
 
-      <div className="min-h-screen w-full bg-gradient-to-r from-blue-100 to-blue-200 font-montserrat text-gray-800">
-        {/* Top Navigation Bar */}
-        <nav className="w-full bg-white/80 backdrop-blur-md shadow-md fixed top-0 left-0 z-10">
-          <div className="max-w-screen-xl mx-auto px-6 py-4 flex justify-between items-center">
-            <div className="flex items-center space-x-2">
-              <span className="text-3xl">🤖</span>
-              <h1 className="text-2xl font-extrabold">xAI Admin</h1>
+      {/* Background gradient */}
+      <div className="
+        min-h-screen w-full
+        bg-gradient-to-tr from-slate-100 via-slate-50 to-white
+        dark:from-gray-900 dark:via-gray-800 dark:to-gray-900
+        text-gray-900 dark:text-gray-100
+        font-[Montserrat]
+        transition-colors duration-500
+      ">
+        {/* Top bar */}
+        <header className="
+          w-full sticky top-0 z-30
+          bg-white/60 dark:bg-gray-900/50 backdrop-blur-lg
+          border-b border-white/30 dark:border-white/10
+        ">
+          <div className="max-w-screen-2xl mx-auto flex items-center justify-between py-4 px-8">
+            <div className="flex items-center space-x-3">
+              <span className="text-3xl">🚀</span>
+              <h1 className="text-2xl font-extrabold tracking-tight">xAI Admin</h1>
             </div>
-            <div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setDark(!dark)}
+                aria-label="Toggle dark mode"
+                className="p-2 rounded-lg bg-white/40 dark:bg-gray-700/40 hover:bg-white/70 dark:hover:bg-gray-700 transition"
+              >
+                {dark ? '🌞' : '🌙'}
+              </button>
               <Link href="/logout">
-                <a className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 transition">
-                  Sign Out
-                </a>
+                <a className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition">Sign Out</a>
               </Link>
             </div>
           </div>
-        </nav>
+        </header>
 
-        {/* Main Content Container */}
-        <main className="pt-24 pb-12 px-6 max-w-screen-xl mx-auto">
-          {/* Hero Section */}
-          <section className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-bold">Admin Dashboard</h2>
-            <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-              Effortlessly manage classes, students, teachers, substitute assignments,
-              and live attendance data—all in one intuitive interface.
-            </p>
-          </section>
+        {/* Hero */}
+        <section className="max-w-screen-2xl mx-auto px-8 pt-24 pb-12">
+          <motion.h2
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-5xl md:text-6xl font-extrabold text-center mb-6"
+          >
+            Admin Dashboard
+          </motion.h2>
+          <p className="text-center text-lg md:text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto">
+            Real‑time control over classes, students, teachers & attendance. Designed for mission‑critical speed and clarity.
+          </p>
+        </section>
 
-          {/* Dashboard Grid */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            <Card
+        {/* Action grid */}
+        <section className="max-w-screen-2xl mx-auto px-8 pb-24">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <ActionCard
               icon="📚"
               title="Search Classes"
               href="/classes"
-              description="View class details and assign substitutes"
+              desc="Inspect class rosters, schedules & assign substitutes on demand."
+              delay={0.1}
             />
-            <Card
+            <ActionCard
               icon="🎓"
               title="Search Students"
               href="/students"
-              description="Lookup student profiles and attendance"
+              desc="Instant access to student profiles, IDs & attendance."
+              delay={0.2}
             />
-            <Card
+            <ActionCard
               icon="👩‍🏫"
               title="Search Teachers"
               href="/teachers"
-              description="Review teacher assignments and schedules"
+              desc="Review teacher loads, email details & daily attendance."
+              delay={0.3}
             />
-            <Card
+            <ActionCard
               icon="🔄"
               title="Manage Subs"
               href="/sub-assignments"
-              description="Approve or revoke substitute assignments"
+              desc="Approve, revoke or audit substitute assignments in seconds."
+              delay={0.4}
             />
-            <Card
+            <ActionCard
               icon="📥"
               title="Download Attendance"
               href="/attendance"
-              description="Export real-time attendance reports"
+              desc="Export real‑time attendance CSV reports across classes."
+              delay={0.5}
             />
-          </section>
-        </main>
+          </div>
+        </section>
 
         {/* Footer */}
-        <footer className="w-full py-6 bg-white/80 backdrop-blur-md text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} xAI • Designed for high-impact desktop use
+        <footer className="w-full py-6 text-center text-sm text-gray-500 dark:text-gray-600">
+          © {new Date().getFullYear()} xAI • Built for extreme usability & speed
         </footer>
       </div>
-    </>
-  );
-}
-
-// Dashboard Card component
-interface CardProps {
-  icon: string;
-  title: string;
-  description: string;
-  href: string;
-}
-
-function Card({ icon, title, description, href }: CardProps) {
-  return (
-    <Link href={href}>
-      <a className="
-        flex flex-col justify-between
-        bg-white shadow-lg rounded-xl
-        p-6 hover:shadow-2xl transition-shadow duration-300
-        h-full
-      ">
-        <div className="flex items-center space-x-4 mb-4">
-          <span className="text-3xl">{icon}</span>
-          <h3 className="text-xl font-semibold">{title}</h3>
-        </div>
-        <p className="text-gray-600 flex-1">{description}</p>
-        <div className="mt-6">
-          <span className="text-blue-600 font-bold underline">Go →</span>
-        </div>
-      </a>
-    </Link>
+    </div>
   );
 }
