@@ -67,7 +67,7 @@ export default function AdminLogin() {
               </svg>
             </div>
             <h1 className="text-3xl font-bold mb-2 text-[#1976D2]">
-              School Attendance
+              Safer Attendance
             </h1>
             <p className="text-sm text-[#1976D2]/80">Admin Dashboard Login</p>
           </div>
@@ -170,7 +170,7 @@ export default function AdminLogin() {
           {/* site footer */}
           <footer className="text-center mt-8">
             <p className="text-xs text-[#1976D2]/60">
-              © 2024 School Attendance System. All rights reserved.
+              © 2025 Safer Attendance LLC. All rights reserved.
             </p>
           </footer>
         </div>
