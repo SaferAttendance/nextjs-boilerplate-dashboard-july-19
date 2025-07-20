@@ -27,7 +27,6 @@ export default function AdminLogin() {
       setLoading(true);
       /* ───────── replace with real Firebase auth ───────── */
       // await signInWithEmailAndPassword(auth, email, pwd);
-      await new Promise((r) => setTimeout(r, 1500)); // demo delay
       /* ─────────────────────────────────────────────────── */
       router.push("/dashboard");
     } catch (err: any) {
