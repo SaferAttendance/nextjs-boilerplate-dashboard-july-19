@@ -1,4 +1,3 @@
-/* app/page.tsx  (or app/login/page.tsx) */
 "use client";
 
 import { useState } from "react";
@@ -10,14 +9,12 @@ import { auth } from "@/lib/firebaseClient";
 export default function AdminLogin() {
   const router = useRouter();
 
-  /* form state */
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  /* handle submit */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -25,11 +22,11 @@ export default function AdminLogin() {
 
     try {
       setLoading(true);
-      /* ───────── replace with real Firebase auth ───────── */
-      // await signInWithEmailAndPassword(auth, email, pwd);
-      /* ─────────────────────────────────────────────────── */
+      // ✅ Use Firebase Auth
+      await signInWithEmailAndPassword(auth, email, pwd);
       router.push("/dashboard");
     } catch (err: any) {
+      console.error("Login error:", err);
       setError(err.message ?? "Login failed");
     } finally {
       setLoading(false);
@@ -154,46 +151,9 @@ export default function AdminLogin() {
                 {loading ? "Signing in…" : "Sign In to Dashboard"}
               </button>
             </form>
-
-            {/* Footer help */}
-            <div className="mt-6 pt-6 border-t border-[#1976D2]/20 text-center">
-              <p className="text-sm text-[#1976D2]/60">
-                Need help? Contact{" "}
-                <a href="#" className="hover:underline text-[#1976D2]">
-                  IT Support
-                </a>
-              </p>
-            </div>
           </div>
-
-          {/* site footer */}
-          <footer className="text-center mt-8">
-            <p className="text-xs text-[#1976D2]/60">
-              © 2024 School Attendance System. All rights reserved.
-            </p>
-          </footer>
         </div>
       </div>
-
-      {/* global styles for gradient + keyframes */}
-      <style jsx global>{`
-        .gradient-bg {
-          background: linear-gradient(135deg, #b3e5fc 0%, #81d4fa 100%);
-        }
-        .login-animation {
-          animation: slideUp 0.6s ease-out;
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </>
   );
 }
