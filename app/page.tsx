@@ -4,8 +4,8 @@
 import { useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/navigation";
-// import { signInWithEmailAndPassword } from "firebase/auth";
-// import { auth } from "@/lib/firebaseClient";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebaseClient";
 
 export default function AdminLogin() {
   const router = useRouter();
