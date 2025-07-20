@@ -1,175 +1,128 @@
-/* app/page.tsx */
+import React, { useEffect, useState } from "react";
+import Head from "next/head";
+import Link from "next/link";
+import { motion } from "framer-motion";
+
+/*************************
+ * Shared Card Component *
+ *************************/
+interface CardProps {
+  title: string;
+  desc: string;
+  href: string;
+  delay?: number;
+}
+const Card: React.FC<CardProps> = ({ title, desc, href, delay = 0 }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 24 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, type: "spring", stiffness: 120 }}
+    whileHover={{ y: -4, boxShadow: "0 12px 28px rgba(0,0,0,.12)" }}
+    className="bg-white/80 backdrop-blur-xl border border-white/40 dark:bg-gray-900/50 dark:border-white/10 rounded-2xl p-8 flex flex-col"
+  >
+    <h3 className="text-xl font-semibold mb-2 tracking-tight text-gray-900 dark:text-white">
+      {title}
+    </h3>
+    <p className="text-gray-600 dark:text-gray-400 flex-1 mb-6">{desc}</p>
+    <Link
+      href={href}
+      className="inline-flex justify-center items-center h-11 px-6 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 transition-colors"
+    >
+      Open
+    </Link>
+  </motion.div>
+);
+
+/*********************
+ * Main Page Component
+ *********************/
 "use client";
-import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import Head from 'next/head';
-
 export default function Dashboard() {
-  const [currentDate, setCurrentDate] = useState<string>('');
-
+  const [date, setDate] = useState<string>("");
   useEffect(() => {
-    const updateDate = () => {
+    const update = () => {
       const now = new Date();
-      const options: Intl.DateTimeFormatOptions = {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      };
-      setCurrentDate(now.toLocaleDateString('en-US', options));
+      setDate(
+        now.toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      );
     };
-
-    updateDate();
-    const interval = setInterval(updateDate, 60_000); // Update every minute
-    return () => clearInterval(interval);
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
   }, []);
 
-  /* Placeholder click handlers */
-  const searchClasses = () => alert('Navigate to Class Search');
-  const searchTeachers = () => alert('Navigate to Teacher Search');
-  const searchStudents = () => alert('Navigate to Student Search');
-  const manageSubstitutes = () => alert('Navigate to Substitute Management');
-  const downloadAttendance = () => alert('Download Attendance CSV');
-  const signOut = () => alert('Signing out...');
+  const signOut = () => alert("Signing out…");
 
   return (
     <>
       <Head>
         <title>School Admin Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
-          rel="preconnect"
-          href="https://fonts.googleapis.com"
-        />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin=""
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap"
           rel="stylesheet"
         />
       </Head>
 
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-[Inter]">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">SA</span>
-                  </div>
-                </div>
-                <h1 className="ml-4 text-xl font-semibold text-gray-900">School Admin</h1>
+      <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 to-slate-200 dark:from-gray-900 dark:to-gray-800 text-gray-900 dark:text-gray-100 font-[Inter]">
+        {/* Top Nav */}
+        <header className="sticky top-0 z-30 w-full backdrop-blur-md bg-white/70 dark:bg-gray-900/60 border-b border-white/40 dark:border-white/10">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-primary-500 rounded-md text-white flex items-center justify-center font-bold text-sm">
+                SA
               </div>
-
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-500">{currentDate}</span>
-                <button
-                  onClick={signOut}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-                >
-                  Sign Out
-                </button>
-              </div>
+              <span className="text-xl font-extrabold tracking-tight">School Admin</span>
+            </div>
+            <div className="flex items-center space-x-6 text-sm">
+              <span className="text-gray-600 dark:text-gray-400 hidden sm:inline">{date}</span>
+              <button
+                onClick={signOut}
+                className="px-4 py-2 rounded-md bg-red-600 text-white font-medium hover:bg-red-500 transition"
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         </header>
 
-        {/* Main */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Welcome */}
-          <section className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Admin Dashboard</h2>
-            <p className="text-gray-600">
-              Manage your school's classes, teachers, students, and attendance efficiently.
-            </p>
-          </section>
+        {/* Hero */}
+        <section className="max-w-7xl mx-auto px-6 pt-24 pb-12 text-center">
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-5xl font-black mb-4 tracking-tight"
+          >
+            Admin Dashboard
+          </motion.h2>
+          <p className="max-w-2xl mx-auto text-lg text-gray-600 dark:text-gray-300">
+            Control classes, teachers, students & attendance—instantly.
+          </p>
+        </section>
 
-          {/* Grid */}
-          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Card Component */}
-            <DashboardCard
-              color="blue"
-              title="Search Classes"
-              description="Find and manage class schedules, room assignments, and course details."
-              onClick={searchClasses}
-            />
-            <DashboardCard
-              color="green"
-              title="Search Teachers"
-              description="Access teacher profiles, contact information, and assignment details."
-              onClick={searchTeachers}
-            />
-            <DashboardCard
-              color="purple"
-              title="Search Students"
-              description="Look up student records, enrollment status, and academic information."
-              onClick={searchStudents}
-            />
-            <DashboardCard
-              color="orange"
-              title="Substitute Assignments"
-              description="Manage substitute teacher assignments and coverage schedules."
-              onClick={manageSubstitutes}
-            />
-            <DashboardCard
-              color="teal"
-              title="Today's Attendance"
-              description="Download today's attendance records as a CSV file for reporting."
-              onClick={downloadAttendance}
-            />
-            {/* Quick Stats */}
-            <StatsCard />
-          </section>
-        </main>
+        {/* Action Grid */}
+        <section className="max-w-7xl mx-auto px-6 pb-24">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <Card title="Search Classes" desc="Manage schedules & rooms." href="/classes" delay={0.1} />
+            <Card title="Search Teachers" desc="Profiles & assignments." href="/teachers" delay={0.2} />
+            <Card title="Search Students" desc="Records & enrollment." href="/students" delay={0.3} />
+            <Card title="Substitute Assignments" desc="Approve or revoke subs." href="/subs" delay={0.4} />
+            <Card title="Download Attendance" desc="Daily CSV export." href="/attendance" delay={0.5} />
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="py-6 text-center text-sm text-gray-500 dark:text-gray-600 border-t border-white/40 dark:border-white/10">
+          © {new Date().getFullYear()} School Admin • Modern UI
+        </footer>
       </div>
     </>
   );
 }
-
-/* Helper card components */
-interface DashProps {
-  title: string;
-  description: string;
-  onClick: () => void;
-  color: 'blue' | 'green' | 'purple' | 'orange' | 'teal';
-}
-
-const DashboardCard: React.FC<DashProps> = ({ title, description, onClick, color }) => {
-  const palette: Record<string, string> = {
-    blue: 'bg-blue-600 hover:bg-blue-700',
-    green: 'bg-green-600 hover:bg-green-700',
-    purple: 'bg-purple-600 hover:bg-purple-700',
-    orange: 'bg-orange-600 hover:bg-orange-700',
-    teal: 'bg-teal-600 hover:bg-teal-700',
-  };
-
-  return (
-    <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-100 flex flex-col">
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-      <p className="text-gray-600 mb-4 flex-1">{description}</p>
-      <button
-        onClick={onClick}
-        className={`w-full text-white py-2 px-4 rounded-lg font-medium transition-colors duration-200 ${palette[color]}`}
-      >
-        {title}
-      </button>
-    </div>
-  );
-};
-
-const StatsCard: React.FC = () => (
-  <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300 p-6 border border-gray-100">
-    <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
-    <ul className="space-y-2 text-gray-600">
-      <li className="flex justify-between"><span>Total Students:</span><span className="font-semibold text-gray-900">1,247</span></li>
-      <li className="flex justify-between"><span>Active Teachers:</span><span className="font-semibold text-gray-900">89</span></li>
-      <li className="flex justify-between"><span>Classes Today:</span><span className="font-semibold text-gray-900">156</span></li>
-      <li className="flex justify-between"><span>Attendance Rate:</span><span className="font-semibold text-green-600">94.2%</span></li>
-    </ul>
-  </div>
-);
