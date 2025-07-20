@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, getIdToken } from "firebase/auth";
 import { auth } from "@/lib/firebaseClient";
 
 export default function AdminLogin() {
@@ -18,12 +18,25 @@ export default function AdminLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email || !pwd) return;
+
+    if (!email || !pwd) {
+      setError("Please enter email and password.");
+      return;
+    }
 
     try {
       setLoading(true);
-      // ✅ Use Firebase Auth
-      await signInWithEmailAndPassword(auth, email, pwd);
+
+      // 🔥 Authenticate with Firebase
+      const userCredential = await signInWithEmailAndPassword(auth, email, pwd);
+
+      // 🎫 Get the Firebase ID token
+      const idToken = await getIdToken(userCredential.user);
+
+      // 🍪 Save token in cookie for middleware
+      document.cookie = `firebaseToken=${idToken}; path=/;`;
+
+      // 🚀 Redirect to dashboard
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
@@ -118,7 +131,7 @@ export default function AdminLogin() {
                 </div>
               </div>
 
-              {/* Remember / forgot */}
+              {/* Remember / Forgot */}
               <div className="flex items-center justify-between">
                 <label className="flex items-center">
                   <input
@@ -151,9 +164,46 @@ export default function AdminLogin() {
                 {loading ? "Signing in…" : "Sign In to Dashboard"}
               </button>
             </form>
+
+            {/* Footer Help */}
+            <div className="mt-6 pt-6 border-t border-[#1976D2]/20 text-center">
+              <p className="text-sm text-[#1976D2]/60">
+                Need help? Contact{" "}
+                <a href="#" className="hover:underline text-[#1976D2]">
+                  IT Support
+                </a>
+              </p>
+            </div>
           </div>
+
+          {/* Site Footer */}
+          <footer className="text-center mt-8">
+            <p className="text-xs text-[#1976D2]/60">
+              © 2024 School Attendance System. All rights reserved.
+            </p>
+          </footer>
         </div>
       </div>
+
+      {/* global styles */}
+      <style jsx global>{`
+        .gradient-bg {
+          background: linear-gradient(135deg, #b3e5fc 0%, #81d4fa 100%);
+        }
+        .login-animation {
+          animation: slideUp 0.6s ease-out;
+        }
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </>
   );
 }
