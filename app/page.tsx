@@ -1,179 +1,336 @@
 /* app/page.tsx */
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Head from "next/head";
-import Link from "next/link";
 
 /* ─────────────────────────────── */
-/* Shared Card component           */
+/* Helpers                                                              */
 /* ─────────────────────────────── */
-interface CardProps {
-  title: string;
-  desc: string;
-  href: string;
-  color: string;
+function nowPretty() {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
-const Card: React.FC<CardProps> = ({ title, desc, href, color }) => (
-  <div
-    className={`
-      bg-white/80 backdrop-blur-xl border border-white/40
-      dark:bg-gray-900/60 dark:border-white/10
-      rounded-2xl p-8 flex flex-col shadow transition
-      hover:-translate-y-1 hover:shadow-2xl
-    `}
-  >
-    <h3 className="text-xl font-semibold mb-2 tracking-tight text-gray-900 dark:text-white">
-      {title}
-    </h3>
-    <p className="text-gray-600 dark:text-gray-400 flex-1 mb-6">{desc}</p>
 
-    <Link
-      href={href}
-      className={`inline-flex justify-center items-center h-11 px-6 rounded-lg font-medium text-white ${color} hover:brightness-110 transition-colors`}
-    >
-      Open
-    </Link>
-  </div>
-);
+const noop = (msg: string) => () => alert(msg);
 
 /* ─────────────────────────────── */
-/* Main Dashboard component        */
+/* Main page                                                            */
 /* ─────────────────────────────── */
-export default function Dashboard() {
-  const [date, setDate] = useState<string>("");
+export default function AdminDashboard() {
+  const [today, setToday] = useState(nowPretty());
 
+  /* update date every minute */
   useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      setDate(
-        now.toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      );
-    };
-    update();
-    const id = setInterval(update, 60_000);
+    const id = setInterval(() => setToday(nowPretty()), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const alertStub = (msg: string) => () => alert(msg);
-  const signOut = () => alert("Signing out…");
+  /* modal state (simple) */
+  const [modal, setModal] = useState<{ title: string; msg: string } | null>(
+    null
+  );
+  const show = (title: string, msg: string) => setModal({ title, msg });
 
   return (
     <>
       <Head>
-        <title>School Admin Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>EduAdmin Dashboard</title>
+
+        {/* Inter font */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+        {/* Font-Awesome (icons) */}
+        <link
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
           rel="stylesheet"
         />
       </Head>
 
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-[Inter]">
+      {/* Body gradient */}
+      <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 min-h-screen font-inter">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">SA</span>
-                </div>
-                <h1 className="ml-4 text-xl font-semibold text-gray-900">
-                  School&nbsp;Admin
-                </h1>
+        <header className="bg-white shadow-sm border-b border-gray-100">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            {/* brand */}
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <i className="fas fa-graduation-cap text-white text-lg" />
               </div>
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">EduAdmin</h1>
+                <p className="text-sm text-gray-500">School Management System</p>
+              </div>
+            </div>
 
-              <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-500">{date}</span>
-                <button
-                  onClick={signOut}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Sign Out
-                </button>
+            {/* user + date */}
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900">
+                  Welcome back, Admin
+                </p>
+                <p className="text-xs text-gray-500">{today}</p>
+              </div>
+              <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <i className="fas fa-user text-white" />
               </div>
             </div>
           </div>
         </header>
 
         {/* Main */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          {/* Welcome */}
-          <section className="mb-10">
-            <h2 className="text-3xl font-extrabold text-gray-900 mb-2 tracking-tight">
-              Welcome to Admin Dashboard
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          {/* hero */}
+          <section className="mb-8">
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">
+              Dashboard Overview
             </h2>
             <p className="text-gray-600">
-              Manage your school's classes, teachers, students, and attendance efficiently.
+              Manage your school operations efficiently with quick access to key
+              functions
             </p>
           </section>
 
-          {/* Grid */}
-          <section className="grid gap-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            <Card
-              title="Search Classes"
-              desc="Find and manage class schedules, rooms, and course details."
-              href="/classes"
-              color="bg-indigo-600"
-            />
-            <Card
-              title="Search Teachers"
-              desc="Access teacher profiles, contact info, and assignments."
-              href="/teachers"
-              color="bg-green-600"
-            />
-            <Card
-              title="Search Students"
-              desc="Look up student records, enrollment, and academic info."
-              href="/students"
-              color="bg-purple-600"
-            />
-            <Card
-              title="Substitute Assignments"
-              desc="Manage substitute teacher coverage schedules."
-              href="/sub-assignments"
-              color="bg-orange-600"
-            />
-            <Card
-              title="Today's Attendance"
-              desc="Download today's attendance CSV for reporting."
-              href="#"
-              color="bg-teal-600"
-            />
+          {/* quick stats */}
+          <section className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            {[
+              {
+                label: "Total Students",
+                value: "1,247",
+                icon: "fa-user-graduate",
+                color: "blue",
+              },
+              {
+                label: "Active Teachers",
+                value: "89",
+                icon: "fa-chalkboard-teacher",
+                color: "green",
+              },
+              {
+                label: "Total Classes",
+                value: "42",
+                icon: "fa-door-open",
+                color: "purple",
+              },
+              {
+                label: "Today's Attendance",
+                value: "94.2%",
+                icon: "fa-chart-line",
+                color: "orange",
+              },
+            ].map(({ label, value, icon, color }) => (
+              <div
+                key={label}
+                className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">{label}</p>
+                    <p className="text-2xl font-bold text-gray-900">{value}</p>
+                  </div>
+                  <div
+                    className={`w-12 h-12 bg-${color}-100 rounded-lg flex items-center justify-center`}
+                  >
+                    <i className={`fas ${icon} text-${color}-600 text-xl`} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </section>
 
-            {/* Quick Stats */}
-            <div className="bg-white/80 backdrop-blur-xl border border-white/40 dark:bg-gray-900/60 dark:border-white/10 rounded-2xl p-8 shadow">
-              <h3 className="text-xl font-semibold mb-4 tracking-tight text-gray-900 dark:text-white">
-                Quick Stats
-              </h3>
-              <ul className="space-y-2 text-gray-700 dark:text-gray-300">
-                <li className="flex justify-between">
-                  <span>Total Students:</span>
-                  <span className="font-semibold">1,247</span>
-                </li>
-                <li className="flex justify-between">
-                  <span>Active Teachers:</span>
-                  <span className="font-semibold">89</span>
-                </li>
-                <li className="flex justify-between">
-                  <span>Classes Today:</span>
-                  <span className="font-semibold">156</span>
-                </li>
-                <li className="flex justify-between">
-                  <span>Attendance Rate:</span>
-                  <span className="font-semibold text-green-600">94.2%</span>
-                </li>
-              </ul>
+          {/* quick actions */}
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-semibold text-gray-900 mb-6">
+              Quick Actions
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                {
+                  title: "Search Teachers",
+                  desc:
+                    "Find and manage teacher profiles, schedules, and assignments",
+                  colorFrom: "blue-500",
+                  colorTo: "blue-600",
+                  fn: () =>
+                    show("Search Teachers", "Opening teacher search interface…"),
+                  icon: "fa-search",
+                },
+                {
+                  title: "Search Classes",
+                  desc:
+                    "Browse class schedules, room assignments, and capacity",
+                  colorFrom: "green-500",
+                  colorTo: "green-600",
+                  fn: () =>
+                    show("Search Classes", "Loading class management system…"),
+                  icon: "fa-door-open",
+                },
+                {
+                  title: "Search Students",
+                  desc:
+                    "Access student records, enrollment, and academic progress",
+                  colorFrom: "purple-500",
+                  colorTo: "purple-600",
+                  fn: () =>
+                    show("Search Students", "Accessing student database…"),
+                  icon: "fa-user-graduate",
+                },
+                {
+                  title: "Manage Substitute Assignments",
+                  desc:
+                    "Assign substitute teachers and manage coverage schedules",
+                  colorFrom: "orange-500",
+                  colorTo: "orange-600",
+                  fn: () =>
+                    show(
+                      "Manage Substitutes",
+                      "Opening substitute assignment panel…"
+                    ),
+                  icon: "fa-user-friends",
+                },
+                {
+                  title: "Download Today's Attendance",
+                  desc:
+                    "Export daily attendance reports in CSV or PDF format",
+                  colorFrom: "indigo-500",
+                  colorTo: "indigo-600",
+                  fn: () =>
+                    show(
+                      "Download Attendance",
+                      "Generating today’s attendance report…"
+                    ),
+                  icon: "fa-download",
+                },
+                {
+                  title: "View Reports",
+                  desc:
+                    "Access comprehensive analytics and performance reports",
+                  colorFrom: "pink-500",
+                  colorTo: "pink-600",
+                  fn: () => show("View Reports", "Loading analytics dashboard…"),
+                  icon: "fa-chart-bar",
+                },
+              ].map(
+                ({
+                  title,
+                  desc,
+                  colorFrom,
+                  colorTo,
+                  fn,
+                  icon,
+                }: {
+                  title: string;
+                  desc: string;
+                  colorFrom: string;
+                  colorTo: string;
+                  fn: () => void;
+                  icon: string;
+                }) => (
+                  <button
+                    key={title}
+                    onClick={fn}
+                    className={`group bg-gradient-to-r from-${colorFrom} to-${colorTo}
+                               hover:from-${colorTo} hover:to-${colorTo.replace(
+                      "500",
+                      "700"
+                    )}
+                               text-white rounded-xl p-6 text-left transition-all duration-200
+                               transform hover:scale-105 hover:shadow-lg`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
+                        <i className={`fas ${icon} text-white text-xl`} />
+                      </div>
+                      <i className="fas fa-arrow-right text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <h4 className="text-lg font-semibold mb-2">{title}</h4>
+                    <p className="text-sm opacity-90">{desc}</p>
+                  </button>
+                )
+              )}
             </div>
           </section>
+
+          {/* recent activity */}
+          <section className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-semibold text-gray-900 mb-6">
+              Recent Activity
+            </h3>
+            {[
+              {
+                icon: "fa-user-plus",
+                color: "blue",
+                text: "New student enrolled: Sarah Johnson",
+                time: "2 hours ago",
+              },
+              {
+                icon: "fa-calendar-check",
+                color: "green",
+                text: "Substitute assigned for Math Class 3B",
+                time: "4 hours ago",
+              },
+              {
+                icon: "fa-file-download",
+                color: "purple",
+                text: "Monthly attendance report generated",
+                time: "1 day ago",
+              },
+            ].map(({ icon, color, text, time }) => (
+              <div
+                key={text}
+                className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg mb-4 last:mb-0"
+              >
+                <div
+                  className={`w-10 h-10 bg-${color}-100 rounded-full flex items-center justify-center`}
+                >
+                  <i className={`fas ${icon} text-${color}-600`} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{text}</p>
+                  <p className="text-xs text-gray-500">{time}</p>
+                </div>
+              </div>
+            ))}
+          </section>
         </main>
+
+        {/* simple modal */}
+        {modal && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={() => setModal(null)}
+          >
+            <div
+              className="bg-white rounded-2xl p-8 max-w-md mx-4 transition"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="fas fa-check text-green-600 text-2xl" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  {modal.title}
+                </h3>
+                <p className="text-gray-600 mb-6">{modal.msg}</p>
+                <button
+                  onClick={() => setModal(null)}
+                  className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-6 py-3 rounded-lg font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
