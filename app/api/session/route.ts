@@ -9,8 +9,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No token provided" }, { status: 400 });
     }
 
+    // Create a response object
+    const response = NextResponse.json({ status: "success" });
+
     // Set secure, HTTP-only cookie with 1-hour expiry
-    cookies().set("firebaseToken", token, {
+    response.cookies.set("firebaseToken", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60, // 1 hour
@@ -18,7 +21,7 @@ export async function POST(req: Request) {
       sameSite: "strict",
     });
 
-    return NextResponse.json({ status: "success" });
+    return response;
   } catch (err) {
     console.error("Session error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -27,9 +30,18 @@ export async function POST(req: Request) {
 
 export async function DELETE() {
   try {
+    const response = NextResponse.json({ status: "signed out" });
+
     // Clear the cookie
-    cookies().delete("firebaseToken");
-    return NextResponse.json({ status: "signed out" });
+    response.cookies.set("firebaseToken", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 0, // Expire immediately
+      path: "/",
+      sameSite: "strict",
+    });
+
+    return response;
   } catch (err) {
     console.error("Session deletion error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
