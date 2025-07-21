@@ -166,6 +166,7 @@ export default function AdminLogin() {
         </div>
       </div>
 
+      {/* ✅ Fixed: global styles now properly placed */}
       <style jsx global>{`
         .gradient-bg {
           background: linear-gradient(135deg, #b3e5fc 0%, #81d4fa 100%);
