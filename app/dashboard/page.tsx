@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 /* app/dashboard/page.tsx */
 "use client";
 
@@ -12,7 +13,7 @@ interface CardSpec {
   title: string;
   desc: string;
   cta: string;
-  icon: JSX.Element;
+  icon: ReactElement;
   onClick: () => void;
 }
 
