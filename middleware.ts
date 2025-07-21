@@ -39,5 +39,9 @@ export async function middleware(req: NextRequest) {
 
 // Apply middleware to /dashboard routes
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/landing",
+    "/teacher-search"
+  ],
 };
