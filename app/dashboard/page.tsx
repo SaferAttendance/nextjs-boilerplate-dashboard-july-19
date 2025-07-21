@@ -12,7 +12,7 @@ interface CardSpec {
   title: string;
   desc: string;
   cta: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
   onClick: () => void;
 }
 
