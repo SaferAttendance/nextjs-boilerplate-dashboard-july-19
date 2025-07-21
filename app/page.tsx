@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, getIdToken } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebaseClient";
 
 export default function AdminLogin() {
@@ -20,27 +20,35 @@ export default function AdminLogin() {
     setError("");
 
     if (!email || !pwd) {
-      setError("Please enter email and password.");
+      setError("Please enter your email and password.");
       return;
     }
 
     try {
       setLoading(true);
 
-      // 🔥 Authenticate with Firebase
+      // 🔥 Sign in with Firebase
       const userCredential = await signInWithEmailAndPassword(auth, email, pwd);
+      const idToken = await userCredential.user.getIdToken();
 
-      // 🎫 Get the Firebase ID token
-      const idToken = await getIdToken(userCredential.user);
+      // 🍪 Store token in HTTP-only cookie (via API route)
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: idToken }),
+      });
 
-      // 🍪 Save token in cookie for middleware
-      document.cookie = `firebaseToken=${idToken}; path=/;`;
+      if (!response.ok) {
+        throw new Error("Failed to set session cookie.");
+      }
 
-      // 🚀 Redirect to dashboard
+      // ✅ Redirect to dashboard
       router.push("/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.message ?? "Login failed");
+      setError(err.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -95,11 +103,11 @@ export default function AdminLogin() {
                 <input
                   id="email"
                   type="email"
-                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="input-focus w-full px-4 py-3 border rounded-lg bg-[#1976D2]/10 border-[#1976D2]/30 text-[#1976D2] placeholder:text-[#1976D2]/60"
                   placeholder="admin@school.edu"
+                  required
                 />
               </div>
 
@@ -115,11 +123,11 @@ export default function AdminLogin() {
                   <input
                     id="password"
                     type={showPwd ? "text" : "password"}
-                    required
                     value={pwd}
                     onChange={(e) => setPwd(e.target.value)}
                     className="input-focus w-full px-4 py-3 border rounded-lg pr-12 bg-[#1976D2]/10 border-[#1976D2]/30 text-[#1976D2] placeholder:text-[#1976D2]/60"
                     placeholder="Enter your password"
+                    required
                   />
                   <button
                     type="button"
@@ -131,28 +139,11 @@ export default function AdminLogin() {
                 </div>
               </div>
 
-              {/* Remember / Forgot */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded accent-[#1976D2] bg-[#1976D2]/10 border-[#1976D2]/30"
-                  />
-                  <span className="ml-2 text-sm text-[#1976D2]/80">
-                    Remember me
-                  </span>
-                </label>
-                <a
-                  href="#"
-                  className="text-sm text-[#1976D2]/80 hover:text-[#1976D2] transition"
-                >
-                  Forgot password?
-                </a>
-              </div>
-
               {/* Error */}
               {error && (
-                <p className="text-sm text-red-600 font-medium -mt-4">{error}</p>
+                <p className="text-sm text-red-600 font-medium -mt-4">
+                  {error}
+                </p>
               )}
 
               {/* Submit */}
@@ -164,16 +155,6 @@ export default function AdminLogin() {
                 {loading ? "Signing in…" : "Sign In to Dashboard"}
               </button>
             </form>
-
-            {/* Footer Help */}
-            <div className="mt-6 pt-6 border-t border-[#1976D2]/20 text-center">
-              <p className="text-sm text-[#1976D2]/60">
-                Need help? Contact{" "}
-                <a href="#" className="hover:underline text-[#1976D2]">
-                  IT Support
-                </a>
-              </p>
-            </div>
           </div>
 
           {/* Site Footer */}
@@ -185,7 +166,6 @@ export default function AdminLogin() {
         </div>
       </div>
 
-      {/* global styles */}
       <style jsx global>{`
         .gradient-bg {
           background: linear-gradient(135deg, #b3e5fc 0%, #81d4fa 100%);
