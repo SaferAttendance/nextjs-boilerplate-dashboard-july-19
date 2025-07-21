@@ -29,9 +29,11 @@ export default function TeachersPage() {
       try {
         setLoading(true);
         setError("");
-        const res = await fetch(`${process.env.NEXT_PUBLIC_XANO_BASE}/teachers`);
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_XANO_BASE}/teachers`
+        );
         if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const data = await res.json();
+        const data: Teacher[] = await res.json();
         setAllTeachers(data);
         setFilteredTeachers(data);
       } catch (err: any) {
@@ -41,15 +43,18 @@ export default function TeachersPage() {
         setLoading(false);
       }
     };
-
     fetchTeachers();
   }, []);
 
   // Filter teachers by name/subject
   useEffect(() => {
     const filtered = allTeachers.filter((t) => {
-      const matchesName = t.name.toLowerCase().includes(nameQuery.toLowerCase());
-      const matchesSubject = subjectFilter ? t.subjects.includes(subjectFilter) : true;
+      const matchesName = t.name
+        .toLowerCase()
+        .includes(nameQuery.toLowerCase());
+      const matchesSubject = subjectFilter
+        ? t.subjects.includes(subjectFilter)
+        : true;
       return matchesName && matchesSubject;
     });
     setFilteredTeachers(filtered);
@@ -69,7 +74,6 @@ export default function TeachersPage() {
       {/* Header */}
       <header className="bg-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
-          {/* Back button */}
           <button
             onClick={() => router.push("/dashboard")}
             className="p-2 rounded-lg text-[#1976D2] hover:bg-gray-100 transition"
@@ -80,7 +84,12 @@ export default function TeachersPage() {
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
           <div className="flex items-center">
@@ -100,12 +109,18 @@ export default function TeachersPage() {
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-[#1976D2]">Search Teachers</h1>
-              <p className="text-sm text-[#1976D2]/70">Find teacher information and schedules</p>
+              <h1 className="text-2xl font-bold text-[#1976D2]">
+                Search Teachers
+              </h1>
+              <p className="text-sm text-[#1976D2]/70">
+                Find teacher information and schedules
+              </p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-sm font-medium text-[#1976D2]">admin@school.edu</p>
+            <p className="text-sm font-medium text-[#1976D2]">
+              admin@school.edu
+            </p>
             <p className="text-xs text-[#1976D2]/60">
               {new Date().toLocaleDateString("en-US", {
                 weekday: "long",
@@ -120,10 +135,12 @@ export default function TeachersPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Search Filters */}
+        {/* Filters */}
         <div className="bg-white rounded-xl p-6 shadow-lg mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-2 text-[#1976D2]">Teacher Name</label>
+            <label className="block text-sm font-medium mb-2 text-[#1976D2]">
+              Teacher Name
+            </label>
             <input
               type="text"
               placeholder="Search by name..."
@@ -133,7 +150,9 @@ export default function TeachersPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2 text-[#1976D2]">Subject</label>
+            <label className="block text-sm font-medium mb-2 text-[#1976D2]">
+              Subject
+            </label>
             <select
               value={subjectFilter}
               onChange={(e) => setSubjectFilter(e.target.value)}
@@ -167,7 +186,7 @@ export default function TeachersPage() {
           </div>
         )}
 
-        {/* Teachers Grid */}
+        {/* Results */}
         {!loading && filteredTeachers.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTeachers.map((t, idx) => (
@@ -181,7 +200,9 @@ export default function TeachersPage() {
                     {t.avatar}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-[#1976D2]">{t.name}</h3>
+                    <h3 className="font-semibold text-lg text-[#1976D2]">
+                      {t.name}
+                    </h3>
                     <p className="text-sm text-[#1976D2]/70">{t.email}</p>
                   </div>
                 </div>
@@ -205,11 +226,55 @@ export default function TeachersPage() {
         {/* No Results */}
         {!loading && !error && filteredTeachers.length === 0 && (
           <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-[#1976D2]">No Teachers Found</h3>
-            <p className="text-[#1976D2]/70">Try adjusting your search criteria.</p>
+            <h3 className="text-lg font-medium text-[#1976D2]">
+              No Teachers Found
+            </h3>
+            <p className="text-[#1976D2]/70">
+              Try adjusting your search criteria.
+            </p>
           </div>
         )}
       </main>
+
+      {/* Global Styles */}
+      <style jsx global>{`
+        .card-hover {
+          transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 15px 35px rgba(25, 118, 210, 0.15);
+        }
+        .teacher-card-animation {
+          animation: fadeInUp 0.6s ease-out;
+        }
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .loading-spinner {
+          border: 3px solid rgba(25, 118, 210, 0.3);
+          border-radius: 50%;
+          border-top: 3px solid #1976d2;
+          width: 24px;
+          height: 24px;
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+      `}</style>
     </>
   );
 }
