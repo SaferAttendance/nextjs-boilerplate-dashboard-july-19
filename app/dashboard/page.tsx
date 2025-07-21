@@ -1,4 +1,3 @@
-import type { ReactElement } from "react";
 /* app/dashboard/page.tsx */
 "use client";
 
@@ -13,7 +12,7 @@ interface CardSpec {
   title: string;
   desc: string;
   cta: string;
-  icon: ReactElement;
+  icon: JSX.Element;
   onClick: () => void;
 }
 
@@ -22,7 +21,6 @@ export default function AdminDashboard() {
   const [today, setToday] = useState("");
   const userEmail = auth.currentUser?.email ?? "admin@school.edu";
 
-  /* date updater */
   useEffect(() => {
     const now = new Date();
     setToday(
@@ -35,21 +33,18 @@ export default function AdminDashboard() {
     );
   }, []);
 
-  /* sign-out */
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push("/"); // ⟵ root login
+      router.push("/"); // Redirect to login
     } catch (e) {
       alert("Sign-out failed");
     }
   };
 
-  /* demo card click */
   const alertCard = (msg: string) => () =>
     alert(`Demo: ${msg}. In a real app this navigates.`);
 
-  /* cards config */
   const cards: CardSpec[] = [
     {
       id: "teachers",
@@ -71,7 +66,7 @@ export default function AdminDashboard() {
           />
         </svg>
       ),
-      onClick: () => router.push("/teachers"), // update when page exists
+      onClick: () => router.push("/teachers"),
     },
     {
       id: "students",
@@ -179,17 +174,11 @@ export default function AdminDashboard() {
         />
       </Head>
 
-      {/* Demo badge */}
-      <div className="demo-badge">
-        🔧 DEMO – Replace Firebase config to activate
-      </div>
-
       <div className="gradient-bg min-h-screen font-[Montserrat]">
         {/* Header */}
         <header className="bg-white shadow-lg">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-6">
-              {/* Brand */}
               <div className="flex items-center">
                 <div className="w-12 h-12 rounded-full mr-4 flex items-center justify-center bg-[#1976D2]">
                   <svg
@@ -213,8 +202,6 @@ export default function AdminDashboard() {
                   <p className="text-sm text-[#1976D2]/70">Admin Dashboard</p>
                 </div>
               </div>
-
-              {/* user + sign-out */}
               <div className="flex items-center space-x-4">
                 <div className="text-right">
                   <p className="text-sm font-medium text-[#1976D2]">
@@ -233,7 +220,7 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        {/* Welcome */}
+        {/* Main */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <section className="dashboard-animation mb-8">
             <h2 className="text-3xl font-bold text-[#1976D2] mb-2">
@@ -282,7 +269,7 @@ export default function AdminDashboard() {
             ))}
           </section>
 
-          {/* Quick stats */}
+          {/* Stats */}
           <section className="mt-12 grid grid-cols-1 md:grid-cols-4 gap-6">
             {[
               ["1,247", "Total Students"],
@@ -304,7 +291,6 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* global css for gradient + animations */}
       <style jsx global>{`
         .gradient-bg {
           background: linear-gradient(135deg, #b3e5fc 0%, #81d4fa 100%);
