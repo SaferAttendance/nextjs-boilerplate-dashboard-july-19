@@ -1,38 +1,37 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { cookies } from "next/headers";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const { token } = await req.json();
 
     if (!token) {
-      return NextResponse.json(
-        { message: "Missing token" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No token provided" }, { status: 400 });
     }
 
-    // Create a response object
-    const response = NextResponse.json(
-      { message: "Session cookie set" },
-      { status: 200 }
-    );
-
-    // Set the cookie properly
-    response.cookies.set("firebaseToken", token, {
+    // Set secure, HTTP-only cookie with 1-hour expiry
+    cookies().set("firebaseToken", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      maxAge: 60 * 60, // 1 hour
       path: "/",
-      maxAge: 60 * 60 * 24, // 1 day
+      sameSite: "strict",
     });
 
-    return response;
+    return NextResponse.json({ status: "success" });
   } catch (err) {
-    console.error("API /session error:", err);
-    return NextResponse.json(
-      { message: "Internal Server Error" },
-      { status: 500 }
-    );
+    console.error("Session error:", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  try {
+    // Clear the cookie
+    cookies().delete("firebaseToken");
+    return NextResponse.json({ status: "signed out" });
+  } catch (err) {
+    console.error("Session deletion error:", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
