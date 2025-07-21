@@ -12,11 +12,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Set cookie (secure & HttpOnly)
+    // Create a response object
     const response = NextResponse.json(
       { message: "Session cookie set" },
       { status: 200 }
     );
+
+    // Set the cookie properly
     response.cookies.set("firebaseToken", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
