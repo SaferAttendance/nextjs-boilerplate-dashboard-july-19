@@ -1,9 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    appDir: true, // ✅ Enable /app directory routing
-  },
+  reactStrictMode: true, // good default
 };
 
 export default nextConfig;
