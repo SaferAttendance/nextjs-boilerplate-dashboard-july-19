@@ -1,36 +1,39 @@
+/* middleware.ts */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+
+/* Protect every /dashboard/* route */
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
   const token = req.cookies.get("firebaseToken")?.value;
- if (!token && req.nextUrl.pathname.startsWith("/dashboard")) {
-    const loginUrl = new URL("/", req.url);
-    return NextResponse.redirect(loginUrl);
+
+  /* 1 – block if not logged in */
+  if (!token && pathname.startsWith("/dashboard")) {
+    return NextResponse.redirect(new URL("/", req.url));
   }
-  // ✅ Pass token directly to Xano for verification and role check
+
+  /* 2 – check role with Xano (Xano validates the token) */
   try {
- const xanoRes = await fetch(
-`https://your-xano.com/admin_dashboard_userDetails`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // Pass token as Bearer
-        },
-      }
+    const base = process.env.NEXT_PUBLIC_XANO_BASE!;
+    const res  = await fetch(
+      `${base}/admin_dashboard_userDetails`,
+      { headers: { Authorization: `Bearer ${token}` } }  // GET by default
     );
-    const userData = await xanoRes.json();
-    if (userData.role !== "admin") {
-console.warn("Blocked non-admin user");
-      const unauthorizedUrl = new URL("/unauthorized", req.url);
-      return NextResponse.redirect(unauthorizedUrl);
+
+    if (!res.ok) throw new Error(`Xano ${res.status}`);
+    const data: { role?: string } = await res.json();
+
+    if (data.role !== "admin") {
+      return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
- return NextResponse.next();
   } catch (err) {
- console.error("Error verifying user:", err);
-    const loginUrl = new URL("/", req.url);
-    return NextResponse.redirect(loginUrl);
+    console.error("Role check failed:", err);
+    return NextResponse.redirect(new URL("/", req.url));
   }
+
+  /* 3 – let the request through */
+  return NextResponse.next();
 }
-export const config = {
- matcher: ["/dashboard/:path*", "/landing", "/teacher-search"],
-};
+
+/* Apply only to dashboard paths */
+export const config = { matcher: ["/dashboard/:path*"] };
