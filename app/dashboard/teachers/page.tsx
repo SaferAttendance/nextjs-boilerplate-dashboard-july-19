@@ -28,6 +28,7 @@ export default function TeachersPage() {
     async function fetchTeachers() {
       try {
         setLoading(true);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_XANO_BASE}/teachers`);
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const data: Teacher[] = await res.json();
         setAllTeachers(data);
