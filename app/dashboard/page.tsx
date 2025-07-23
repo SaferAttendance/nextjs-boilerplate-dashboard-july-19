@@ -66,7 +66,7 @@ export default function AdminDashboard() {
           />
         </svg>
       ),
-      onClick: () => router.push("/dashboard/teachers/page.tsx"),
+      onClick: () => router.push("/dashboard/teachers"),
     },
     {
       id: "students",
