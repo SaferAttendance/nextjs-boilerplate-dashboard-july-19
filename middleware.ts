@@ -1,46 +1,60 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-
-/**
- * Edge middleware to protect /dashboard/* routes:
- * 1) Must have firebaseToken cookie
- * 2) Ask Xano if the user is an admin
- * If checks fail, redirect to login or /unauthorized.
- */
+import { auth } from "@/lib/firebaseClient"; // your firebaseClient.ts
 
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get("firebaseToken")?.value;
 
-  // 1) Redirect to login if unauthenticated
+  // Redirect to login if no Firebase token
   if (!token && req.nextUrl.pathname.startsWith("/dashboard")) {
-    return NextResponse.redirect(new URL("/", req.url));
+    const loginUrl = new URL("/", req.url);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // 2) Verify role via Xano (Xano validates the token server-side)
+  // ✅ Verify token with Firebase
+  // ✅ Pass token directly to Xano for verification and role check
   try {
-    const base = process.env.NEXT_PUBLIC_XANO_BASE!; // set in Vercel
-    const res = await fetch(
-      `${base}/admin_dashboard_userDetails`,
+    const decodedToken = await auth.verifyIdToken(token);
+    const email = decodedToken.email;
+
+    // ✅ Call Xano API to check role
+    const xanoRes = await fetch(
+      `https://x8ki-letl-twmt.n7.xano.io/api:wWEItDWL/admin_dashboard_userDetails?email=${email}`
+      `https://your-xano.com/admin_dashboard_userDetails`,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // Pass token as Bearer
+        },
       }
     );
 
-    if (!res.ok) throw new Error(`Xano ${res.status}`);
+    const userData = await xanoRes.json();
 
-    const data = await res.json();            // { role: "admin" | ... }
-    if (data.role !== "admin") {
-      return NextResponse.redirect(new URL("/unauthorized", req.url));
+    if (userData.role !== "admin") {
+      console.warn("Blocked non-admin user:", email);
+      console.warn("Blocked non-admin user");
+      const unauthorizedUrl = new URL("/unauthorized", req.url);
+      return NextResponse.redirect(unauthorizedUrl);
     }
-  } catch (err) {
-    console.error("Role check failed:", err);
-    return NextResponse.redirect(new URL("/", req.url));
-  }
 
-  // 3) All good – continue
-  return NextResponse.next();
+    // ✅ User is admin, let them through
+    return NextResponse.next();
+  } catch (err) {
+    console.error("Error verifying Firebase token or role:", err);
+    console.error("Error verifying user:", err);
+    const loginUrl = new URL("/", req.url);
+    return NextResponse.redirect(loginUrl);
+  }
 }
 
+// Apply middleware to /dashboard routes
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/landing",
+    "/teacher-search"
+  ],
+  matcher: ["/dashboard/:path*", "/landing", "/teacher-search"],
 };
