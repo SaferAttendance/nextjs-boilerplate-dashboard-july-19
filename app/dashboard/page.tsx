@@ -12,7 +12,6 @@ interface CardSpec {
   title: string;
   desc: string;
   cta: string;
-  icon: JSX.Element;
   icon: React.ReactElement;
   onClick: () => void;
 }
@@ -68,6 +67,7 @@ export default function AdminDashboard() {
         </svg>
       ),
       onClick: () => router.push("/teachers"),
+      onClick: () => router.push("/dashboard/teachers"),
     },
     {
       id: "students",
