@@ -1,17 +1,15 @@
-// app/api/session/route.ts
-import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 
-// Your Firebase Admin SDK service account (best stored as env vars)
+// Firebase Admin init
 const serviceAccount = {
   projectId: process.env.FIREBASE_PROJECT_ID,
   clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
 };
 
-// Initialize admin if not already
 if (!getApps().length) {
   initializeApp({
     credential: cert(serviceAccount as any),
@@ -21,14 +19,11 @@ if (!getApps().length) {
 export async function POST(request: NextRequest) {
   try {
     const { idToken, rememberMe } = await request.json();
-
-    // Verify ID token from Firebase Auth
     const decodedToken = await getAuth().verifyIdToken(idToken);
 
-    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4; // 30d or 4h
+    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4;
+    const cookieStore = cookies(); // ✅ synchronous
 
-    // Set secure HTTP-only cookie
-    const cookieStore = cookies();
     cookieStore.set('token', idToken, {
       httpOnly: true,
       secure: true,
@@ -45,7 +40,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  const cookieStore = cookies();
+  const cookieStore = cookies(); // ✅ synchronous
   cookieStore.delete('token');
   return NextResponse.json({ success: true });
 }
