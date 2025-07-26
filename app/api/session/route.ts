@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies } from 'next/headers'; // ✅ Important
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const decodedToken = await getAuth().verifyIdToken(idToken);
 
     const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4;
-    const cookieStore = cookies(); // ✅ synchronous
+    const cookieStore = cookies(); // ✅ Now correct
 
     cookieStore.set('token', idToken, {
       httpOnly: true,
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  const cookieStore = cookies(); // ✅ synchronous
+  const cookieStore = cookies();
   cookieStore.delete('token');
   return NextResponse.json({ success: true });
 }
