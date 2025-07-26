@@ -3,21 +3,88 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+type XanoAdmin = {
+  id?: number;
+  email?: string;
+  full_name?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  // add any fields you care about (school_id, role, etc.)
+};
+
+async function fetchAdminFromXano(email: string): Promise<XanoAdmin | null> {
+  const base = process.env.XANO_BASE_URL; // e.g. https://x8ki-letl-twmt.n7.xano.io/api:wWEItDWL
+  if (!base) {
+    console.error('XANO_BASE_URL is not set');
+    return null;
+  }
+
+  const apiKey = process.env.XANO_API_KEY || '';
+  const url = `${base}/admin_dashboard_checkAdmin?email=${encodeURIComponent(email)}`;
+
+  const headers: Record<string, string> = {
+    // If your endpoint is public you can omit these.
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    ...(apiKey ? { 'X-API-KEY': apiKey } : {}),
+  };
+
+  const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+
+  if (!res.ok) {
+    // Helpful logging for debugging payloads/errors coming from Xano
+    const text = await res.text().catch(() => '');
+    console.error('Xano /admin_dashboard_checkAdmin failed:', res.status, text);
+    return null;
+  }
+
+  // Xano responses vary: could be an object, {items:[...]}, or {data:{...}}
+  const payload = await res.json();
+
+  if (payload && typeof payload === 'object') {
+    if (Array.isArray(payload)) return payload[0] ?? null;
+    if (payload.data && typeof payload.data === 'object') return payload.data as XanoAdmin;
+    if (payload.item && typeof payload.item === 'object') return payload.item as XanoAdmin;
+    if (payload.items && Array.isArray(payload.items)) return payload.items[0] ?? null;
+    return payload as XanoAdmin; // plain object
+  }
+
+  return null;
+}
+
+function getDisplayName(profile: XanoAdmin | null, emailFallback?: string) {
+  if (!profile) return emailFallback || 'Admin';
+  return (
+    profile.full_name ||
+    profile.name ||
+    (profile.first_name && profile.last_name
+      ? `${profile.first_name} ${profile.last_name}`
+      : profile.first_name || profile.last_name || emailFallback || 'Admin')
+  );
+}
+
 export default async function DashboardPage() {
-  // Require a valid session cookie
-  const cookieStore = await cookies();
+  // ---- Require valid session
+  const cookieStore = cookies();
   const token = cookieStore.get('token')?.value;
   if (!token) redirect('/');
 
-  // Verify token with Firebase Admin (lazy import so it doesn't run at build time)
+  // Verify token with Firebase Admin and extract email
+  let email: string | undefined;
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin');
-    await getAdminAuth().verifyIdToken(token);
-    // Optional: role gate
-    // if (claims.role !== 'admin') redirect('/dashboard/unauthorized');
-  } catch {
+    const decoded = await getAdminAuth().verifyIdToken(token);
+    email = decoded.email ?? undefined;
+    // Optional role gate:
+    // if (decoded.role !== 'admin') redirect('/dashboard/unauthorized');
+  } catch (e) {
+    console.error('Token verification failed:', e);
     redirect('/');
   }
+
+  // ---- Fetch admin profile from Xano using email
+  const xanoAdmin = email ? await fetchAdminFromXano(email) : null;
+  const displayName = getDisplayName(xanoAdmin, email);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -27,7 +94,12 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-400 to-blue-600 text-white">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
             <h1 className="text-lg font-semibold text-gray-900">Safer Attendance Dashboard</h1>
@@ -38,12 +110,19 @@ export default async function DashboardPage() {
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">System Online</span>
             </div>
-            {/* Placeholder avatar; implement real account menu later */}
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
-              A
+            {/* Avatar with initials from displayName */}
+            <div
+              aria-label={displayName}
+              title={displayName}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-xs font-medium text-white"
+            >
+              {displayName
+                .split(' ')
+                .map((s) => s[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase()}
             </div>
-            {/* For a real Sign Out, add a small route that deletes the cookie and redirects */}
-            {/* <Link href="/dashboard/signout" className="rounded-lg bg-red-500 px-4 py-2 text-sm text-white transition hover:bg-red-600 hover:shadow-lg">Sign Out</Link> */}
           </div>
         </div>
       </header>
@@ -51,7 +130,7 @@ export default async function DashboardPage() {
       {/* Welcome */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome back, Admin</h2>
+          <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome back, {displayName}</h2>
           <p className="text-gray-600">Choose a quick action to get started.</p>
         </div>
       </section>
@@ -78,14 +157,7 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-gray-600">Find and view student information and attendance records.</p>
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
               Open
-              <svg
-                className="transition group-hover:translate-x-0.5"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-              >
+              <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
@@ -182,9 +254,6 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </section>
-
-      {/* Recent Activity (placeholder) */}
-      {/* Add your recent activity list here if desired */}
     </main>
   );
 }
