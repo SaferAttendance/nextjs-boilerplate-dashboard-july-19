@@ -55,31 +55,34 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
-      {/* Left: Illustration / brand (hidden on small screens) */}
-      <section className="relative hidden lg:block">
-        <div className="absolute inset-0 bg-gradient-to-br from-[color:var(--brand-light)] via-white to-white" />
-        <div className="relative h-full flex items-center justify-center p-16">
-          <div className="max-w-md">
-            <div className="mb-8 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[color:var(--brand-blue)] text-white shadow-lg">
-              {/* simple check icon */}
-              <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-3xl font-bold tracking-tight mb-3">Safer Attendance</h2>
-            <p className="text-gray-600 leading-relaxed">
-              Ensuring safety one class at a time while promoting attendance.
-            </p>
+    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-50">
+      {/* Left: Brand / Illustration */}
+      <section className="relative hidden lg:flex items-center justify-center overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-light via-brand-blue to-brand-dark" />
+
+        {/* Soft glow decorations */}
+        <div className="pointer-events-none absolute -top-24 -left-20 h-96 w-96 rounded-full bg-white/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-20 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-3xl" />
+
+        <div className="relative z-10 w-full max-w-xl px-16 text-white">
+          <div className="mb-8 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30 shadow-lg backdrop-blur-sm">
+            <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
           </div>
+          <h2 className="text-4xl font-bold tracking-tight drop-shadow-sm">Safer Attendance</h2>
+          <p className="mt-3 text-white/90 leading-relaxed">
+            Ensuring safety one class at a time while promoting attendance.
+          </p>
         </div>
       </section>
 
       {/* Right: Auth card */}
       <section className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md card p-8">
+        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl ring-1 ring-black/5">
           <header className="mb-8 text-center">
-            <h1 className="text-2xl font-bold">Sign in to Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Sign in to Dashboard</h1>
             <p className="mt-2 text-sm text-gray-600">Admins only</p>
           </header>
 
@@ -98,19 +101,34 @@ export default function LoginPage() {
               <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
                 Email address
               </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                disabled={isLoading}
-                value={formData.email}
-                onChange={handleInputChange}
-                className="input"
-                placeholder="admin@school.edu"
-                aria-invalid={!!error}
-              />
+              <div className="relative">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  disabled={isLoading}
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder="admin@school.edu"
+                  className="block w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 pl-11 text-gray-900 placeholder-gray-400 shadow-sm outline-none transition focus:border-brand-dark focus:ring-4 focus:ring-brand-blue/30 disabled:opacity-60"
+                  aria-invalid={!!error}
+                />
+                <svg
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
+                  />
+                </svg>
+              </div>
             </div>
 
             {/* Password */}
@@ -128,26 +146,35 @@ export default function LoginPage() {
                   disabled={isLoading}
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="input pr-12"
                   placeholder="Enter your password"
+                  className="block w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 pr-12 text-gray-900 placeholder-gray-400 shadow-sm outline-none transition focus:border-brand-dark focus:ring-4 focus:ring-brand-blue/30 disabled:opacity-60"
                   aria-invalid={!!error}
                 />
+
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
                   disabled={isLoading}
-                  className="absolute inset-y-0 right-3 my-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-blue)]"
+                  className="absolute inset-y-0 right-2 my-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? (
-                    /* eye-off */
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M9.88 9.88A3 3 0 0112 9c3.87 0 7.16 2.69 8 6-.31 1.25-1 2.39-1.96 3.3M6.62 6.62C4.77 7.77 3.34 9.67 3 12c.84 3.31 4.13 6 8 6 1.02 0 2-.18 2.9-.51" />
+                      <path
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M3 3l18 18M9.88 9.88A3 3 0 0112 9c3.87 0 7.16 2.69 8 6-.31 1.25-1 2.39-1.96 3.3M6.62 6.62C4.77 7.77 3.34 9.67 3 12c.84 3.31 4.13 6 8 6 1.02 0 2-.18 2.9-.51"
+                      />
                     </svg>
                   ) : (
-                    /* eye */
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                       <circle cx="12" cy="12" r="3" strokeWidth="2" />
                     </svg>
                   )}
@@ -163,7 +190,7 @@ export default function LoginPage() {
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                   disabled={isLoading}
-                  className="h-4 w-4 rounded border-gray-300 text-[color:var(--brand-blue)] focus:ring-[color:var(--brand-blue)]"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-blue focus:ring-brand-blue"
                 />
                 Remember me
               </label>
@@ -171,7 +198,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 disabled={isLoading}
-                className="text-sm font-medium text-[color:var(--brand-dark)] hover:text-[color:var(--brand-blue)] disabled:opacity-50"
+                className="text-sm font-medium text-brand-dark hover:text-brand-blue disabled:opacity-50"
               >
                 Forgot password?
               </button>
@@ -181,7 +208,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || !formData.email || !formData.password}
-              className="btn-primary w-full"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-brand-dark to-brand-blue px-4 py-3 font-semibold text-white shadow-lg transition hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-brand-blue/40 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
@@ -191,7 +218,12 @@ export default function LoginPage() {
               ) : (
                 <span className="inline-flex items-center gap-2">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14" />
+                    <path
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M11 16l-4-4m0 0l4-4m-4 4h14"
+                    />
                   </svg>
                   Sign in to Dashboard
                 </span>
@@ -201,9 +233,7 @@ export default function LoginPage() {
 
           <footer className="mt-8 border-t pt-6 text-center text-sm text-gray-500">
             Need help? Contact{' '}
-            <button className="font-medium text-[color:var(--brand-dark)] hover:text-[color:var(--brand-blue)]">
-              IT Support
-            </button>
+            <button className="font-medium text-brand-dark hover:text-brand-blue">IT Support</button>
           </footer>
         </div>
       </section>
