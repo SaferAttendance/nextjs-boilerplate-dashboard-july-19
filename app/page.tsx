@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebase' // Assuming you have Firebase config here
+import { auth } from '@/lib/firebaseClient.ts' // Assuming you have Firebase config here
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
