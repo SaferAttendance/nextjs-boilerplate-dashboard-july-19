@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-// Resolve the Xano endpoint (env override -> base/group fallback)
 function teachersEndpoint() {
   const direct = process.env.XANO_SEARCH_TEACHERS_URL; // full URL optional
   if (direct) return direct.replace(/\/$/, '');
@@ -11,51 +10,52 @@ function teachersEndpoint() {
   return `${base.replace(/\/$/, '')}/admin_search_teachers`;
 }
 
+// normalize cookie reads across runtimes/types
+function readCookie(req: NextRequest, name: string): string | undefined {
+  const c: any = req.cookies.get(name);
+  return typeof c === 'string' ? c : c?.value;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get('q') || '').trim();
+
   if (!q) {
     return NextResponse.json({ error: 'Missing query (q)' }, { status: 400 });
   }
 
-  // ✅ Use request cookies in route handlers
-  const jar = req.cookies;
+  // ---- scope from cookies
   const email =
-    jar.get('email')?.value ||
-    jar.get('session_email')?.value || // if you stored it under this name
-    '';
+    readCookie(req, 'email') ||
+    readCookie(req, 'session_email') ||
+    undefined;
 
-  const district = jar.get('district_code')?.value;
-  const school = jar.get('school_code')?.value;
+  const district = readCookie(req, 'district_code');
+  const school   = readCookie(req, 'school_code');
 
   if (!district || !school) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
   }
 
-  // Build Xano request
+  // ---- build Xano request with your exact input names
   const url = new URL(teachersEndpoint());
-  // Provide both keys your Xano endpoint accepts
-  url.searchParams.set('teacher_email', q);
-  url.searchParams.set('teacher_name', q);
-
-  // Scope params from cookies
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code', school);
 
-  // Include who is searching (if your Xano flow needs it)
-  if (email) url.searchParams.set('email', email);
+  if (q.includes('@')) {
+    url.searchParams.set('teacher_email', q);
+  } else {
+    url.searchParams.set('teacher_name', q);
+  }
+
+  if (email) url.searchParams.set('email', email); // optional, if your flow uses it
 
   const headers: HeadersInit = {};
   if (process.env.XANO_API_KEY) {
-    headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
+    headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
   }
 
-  const r = await fetch(url.toString(), {
-    method: 'GET',
-    headers,
-    cache: 'no-store',
-  });
-
+  const r = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
   const data = await r.json();
   return NextResponse.json(data, { status: r.status });
 }
