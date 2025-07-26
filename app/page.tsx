@@ -1,242 +1,290 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebaseClient' // Assuming you have Firebase config here
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '@/lib/firebaseClient';
 
 export default function LoginPage() {
-  const [formData, setFormData] = useState({
-    email: '',
-    password: ''
-  })
-  const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
-  const [error, setError] = useState('')
-  
-  const router = useRouter()
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const router = useRouter();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
-    // Clear error when user starts typing
-    if (error) setError('')
-  }
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    if (error) setError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError('')
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
 
     try {
-      // Firebase Authentication
+      // Firebase Auth
       const userCredential = await signInWithEmailAndPassword(
-        auth, 
-        formData.email, 
+        auth,
+        formData.email,
         formData.password
-      )
-      
-      // Get Firebase ID token
-      const idToken = await userCredential.user.getIdToken()
-      
-      // Store token in session cookie via your API route
+      );
+
+      // Firebase ID token
+      const idToken = await userCredential.user.getIdToken();
+
+      // Persist session via API route
       const sessionResponse = await fetch('/api/session', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          idToken,
-          rememberMe 
-        }),
-      })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, rememberMe })
+      });
 
       if (!sessionResponse.ok) {
-        throw new Error('Failed to create session')
+        throw new Error('Failed to create session');
       }
 
-      // Redirect to dashboard (middleware will handle role checking)
-      router.push('/dashboard')
-      
+      router.push('/dashboard');
     } catch (error: any) {
-      console.error('Login error:', error)
-      
-      // Handle specific Firebase auth errors
-      if (error.code === 'auth/user-not-found') {
-        setError('No account found with this email address')
-      } else if (error.code === 'auth/wrong-password') {
-        setError('Incorrect password')
-      } else if (error.code === 'auth/invalid-email') {
-        setError('Invalid email address')
-      } else if (error.code === 'auth/too-many-requests') {
-        setError('Too many failed attempts. Please try again later')
-      } else {
-        setError('Login failed. Please try again')
+      // Map Firebase error codes to friendly messages
+      switch (error?.code) {
+        case 'auth/user-not-found':
+          setError('No account found with this email address.');
+          break;
+        case 'auth/wrong-password':
+          setError('Incorrect password.');
+          break;
+        case 'auth/invalid-email':
+          setError('Invalid email address.');
+          break;
+        case 'auth/too-many-requests':
+          setError('Too many failed attempts. Please try again later.');
+          break;
+        default:
+          setError('Login failed. Please try again.');
       }
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
-
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword)
-  }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-blue via-brand-light to-white flex items-center justify-center p-4 font-montserrat">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-20 w-32 h-32 bg-brand-dark rounded-full blur-xl"></div>
-        <div className="absolute bottom-20 right-20 w-40 h-40 bg-brand-blue rounded-full blur-xl"></div>
-        <div className="absolute top-1/2 left-1/3 w-24 h-24 bg-brand-light rounded-full blur-lg"></div>
-      </div>
+    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gradient-to-br from-brand-blue via-brand-light to-white">
+      {/* Left / Hero (hidden on mobile) */}
+      <section
+        aria-hidden="true"
+        className="relative hidden lg:flex items-center justify-center p-12"
+      >
+        <div className="absolute inset-0">
+          {/* Soft decorative glows */}
+          <div className="absolute -top-10 -left-10 w-72 h-72 rounded-full bg-brand-dark/30 blur-3xl" />
+          <div className="absolute -bottom-10 -right-10 w-80 h-80 rounded-full bg-brand-blue/30 blur-3xl" />
+        </div>
 
-      {/* Login Container */}
-      <div className="relative w-full max-w-md">
-        {/* Main Login Card */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-white/20">
-          {/* Header */}
-          <div className="text-center mb-8">
-            {/* Logo/Icon */}
-            <div className="w-16 h-16 bg-gradient-to-r from-brand-blue to-brand-dark rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
-            <p className="text-gray-600 font-medium">Student Attendance Management</p>
+        <div className="relative z-10 max-w-xl">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/70 shadow-xl ring-1 ring-white/60 backdrop-blur">
+            <svg className="w-8 h-8 text-brand-blue" viewBox="0 0 24 24" fill="none">
+              <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0" />
+            </svg>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-red-600 text-sm font-medium">{error}</p>
-            </div>
-          )}
+          <h1 className="mt-6 text-4xl font-bold text-gray-900">
+            Safer Attendance
+          </h1>
+          <p className="mt-3 text-lg leading-7 text-gray-700">
+            Ensuring safety one class at a time while promoting attendance. Sign in to manage students, teachers, and substitutes from a single, streamlined dashboard.
+          </p>
 
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Field */}
-            <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
-                Email Address
-              </label>
-              <div className="relative">
-                <input 
-                  type="email" 
-                  id="email" 
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent transition-all duration-200 pl-12 disabled:opacity-50"
-                  placeholder="admin@school.edu"
-                />
-                <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
-                </svg>
+          <ul className="mt-6 space-y-3 text-gray-700">
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-block h-2 w-2 rounded-full bg-brand-blue" />
+              <span className="leading-6">Quick, secure access using your admin credentials.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-block h-2 w-2 rounded-full bg-brand-dark" />
+              <span className="leading-6">Real-time role-based access controls.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="mt-1 inline-block h-2 w-2 rounded-full bg-brand-blue" />
+              <span className="leading-6">Optimized for desktop, works great on tablet & mobile.</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      {/* Right / Auth Card */}
+      <section className="relative flex items-center justify-center p-6 sm:p-10">
+        {/* Subtle background accents */}
+        <div className="pointer-events-none absolute inset-0 opacity-10">
+          <div className="absolute top-10 left-10 h-24 w-24 rounded-full bg-brand-dark blur-2xl" />
+          <div className="absolute bottom-10 right-10 h-28 w-28 rounded-full bg-brand-blue blur-2xl" />
+        </div>
+
+        <div className="relative z-10 w-full max-w-md">
+          <div className="rounded-2xl bg-white/90 backdrop-blur-md shadow-2xl ring-1 ring-black/5">
+            <div className="px-6 py-7 sm:px-8 sm:py-9">
+              <div className="mb-7 text-center">
+                <h2 className="text-2xl font-semibold text-gray-900">Admin Sign In</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Use your school email and password to continue.
+                </p>
               </div>
-            </div>
 
-            {/* Password Field */}
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
-                Password
-              </label>
-              <div className="relative">
-                <input 
-                  type={showPassword ? "text" : "password"}
-                  id="password" 
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent transition-all duration-200 pl-12 pr-12 disabled:opacity-50"
-                  placeholder="Enter your password"
-                />
-                <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                </svg>
-                <button 
-                  type="button" 
-                  onClick={togglePasswordVisibility}
-                  disabled={isLoading}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+              {/* Error */}
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
                 >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isLoading}>
+                {/* Email */}
+                <div className="space-y-2">
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-800">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="username"
+                      autoFocus
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      disabled={isLoading}
+                      placeholder="admin@school.edu"
+                      className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pl-12 text-gray-900 outline-none transition focus:border-transparent focus:bg-white focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
+                    />
+                    <svg
+                      className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206A8.96 8.96 0 0112 21" />
                     </svg>
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div className="space-y-2">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-800">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      disabled={isLoading}
+                      placeholder="Enter your password"
+                      className="peer w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pl-12 pr-12 text-gray-900 outline-none transition focus:border-transparent focus:bg-white focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
+                    />
+                    <svg
+                      className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 15v2M6 21h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v4h8z" />
+                    </svg>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                      disabled={isLoading}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-2 text-gray-400 transition hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
+                    >
+                      {showPassword ? (
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.584 10.587A3 3 0 0113.415 13.42M6.5 6.5C4.248 7.978 2.64 10.09 2 12c1.8 5 7 8 10 8 1.45 0 3.43-.57 5.5-1.9M14.12 9.88C13.555 9.315 12.8 9 12 9a3 3 0 00-3 3c0 .8.316 1.555.88 2.121" />
+                        </svg>
+                      ) : (
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7C20.268 16.057 16.477 19 12 19S3.732 16.057 2.458 12z" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Options */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={e => setRememberMe(e.target.checked)}
+                      disabled={isLoading}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-blue focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Remember me</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    className="text-sm font-medium text-gray-800 underline-offset-4 hover:underline disabled:opacity-50"
+                  >
+                    Forgot password?
+                    <span className="sr-only"> (opens password recovery)</span>
+                  </button>
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={isLoading || !formData.email || !formData.password}
+                  className="relative inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-4 py-3 font-semibold text-white shadow-lg transition hover:from-brand-dark hover:to-brand-blue hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center">
+                      <span className="mr-2 inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Signing you in…
+                    </span>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                    </svg>
+                    <span className="flex items-center">
+                      <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                      </svg>
+                      Sign in to Dashboard
+                    </span>
                   )}
                 </button>
+              </form>
+
+              {/* Footer */}
+              <div className="mt-8 border-t border-gray-200 pt-6 text-center">
+                <p className="text-sm text-gray-600">
+                  Need help? Contact{' '}
+                  <button className="font-medium text-gray-800 underline-offset-4 hover:underline">
+                    IT Support
+                  </button>
+                </p>
               </div>
             </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input 
-                  type="checkbox" 
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  disabled={isLoading}
-                  className="w-4 h-4 text-brand-blue bg-gray-100 border-gray-300 rounded focus:ring-brand-blue focus:ring-2 disabled:opacity-50"
-                />
-                <span className="ml-2 text-sm text-gray-600">Remember me</span>
-              </label>
-              <button 
-                type="button"
-                disabled={isLoading}
-                className="text-sm text-brand-dark hover:text-brand-blue font-medium transition-colors disabled:opacity-50"
-              >
-                Forgot password?
-              </button>
-            </div>
-
-            {/* Login Button */}
-            <button 
-              type="submit"
-              disabled={isLoading || !formData.email || !formData.password}
-              className="w-full bg-gradient-to-r from-brand-blue to-brand-dark text-white font-semibold py-3 px-4 rounded-xl hover:from-brand-dark hover:to-brand-blue transform hover:scale-[1.02] transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Signing you in...
-                </span>
-              ) : (
-                <span className="flex items-center justify-center">
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
-                  </svg>
-                  Sign In to Dashboard
-                </span>
-              )}
-            </button>
-          </form>
-
-          {/* Footer */}
-          <div className="mt-8 pt-6 border-t border-gray-200 text-center">
-            <p className="text-sm text-gray-500">
-              Need help? Contact{' '}
-              <button className="text-brand-dark hover:text-brand-blue font-medium transition-colors">
-                IT Support
-              </button>
-            </p>
           </div>
+
+          {/* Small print */}
+          <p className="mt-6 text-center text-xs text-gray-500">
+            By signing in you agree to the Acceptable Use Policy.
+          </p>
         </div>
-      </div>
-    </div>
-  )
+      </section>
+    </main>
+  );
 }
