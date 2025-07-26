@@ -1,29 +1,16 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* app/global.css — Tailwind v4 */
+@import "tailwindcss";
 
-/* Optional: small base tweaks */
-@layer base {
-  :root {
-    --brand-blue: #2563eb; /* primary */
-    --brand-dark: #1e3a8a; /* darker accent */
-    --brand-light: #dbeafe; /* light accent */
-  }
+/* Optional theme tokens (v4 @theme) */
+@theme {
+  --color-brand-blue: #2563eb;  /* primary */
+  --color-brand-dark: #1e3a8a;  /* darker accent */
+  --color-brand-light: #dbeafe; /* light accent */
 }
 
-/* Utilities you might reuse */
-@layer utilities {
-  .btn-primary {
-    @apply inline-flex items-center justify-center rounded-xl px-4 py-3 font-semibold text-white
-           bg-[color:var(--brand-blue)] hover:bg-[color:var(--brand-dark)]
-           transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2
-           focus:ring-[color:var(--brand-blue)];
-  }
-  .input {
-    @apply w-full rounded-xl border border-gray-300 bg-white px-4 py-3
-           focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-blue)] focus:border-transparent;
-  }
-  .card {
-    @apply rounded-2xl bg-white shadow-xl border border-gray-100;
-  }
+/* Optional tiny helpers (no @apply) */
+.float-slow { animation: float 6s ease-in-out infinite; }
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-8px); }
 }
