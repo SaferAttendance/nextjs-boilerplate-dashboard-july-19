@@ -1,10 +1,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import dynamic from 'next/dynamic';
-
-// Dynamically import TeachersSearch so it's only rendered on client
-const TeachersSearch = dynamic(() => import('./TeachersSearch'), { ssr: false });
+import TeachersSearch from './TeachersSearch';
 
 export default async function TeachersPage() {
   // ---- Require valid session
