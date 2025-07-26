@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4; // 30d or 4h
 
     // Set secure HTTP-only cookie
-    cookies().set('token', idToken, {
+    const cookieStore = cookies();
+    cookieStore.set('token', idToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'lax',
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
-  // For logging out — just remove the cookie
-  cookies().delete('token');
+  const cookieStore = cookies();
+  cookieStore.delete('token');
   return NextResponse.json({ success: true });
 }
