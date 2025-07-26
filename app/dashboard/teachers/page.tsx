@@ -6,7 +6,7 @@ import TeachersSearch from './TeachersSearch';
 
 export default async function TeachersPage() {
   // ---- Require valid session
-  const jar = cookies(); // NOTE: no await here
+  const jar = await cookies(); // ✅ must await in server components
   const token = jar.get('token')?.value;
   if (!token) redirect('/');
 
@@ -62,8 +62,6 @@ export default async function TeachersPage() {
             <div className="flex items-center space-x-4">
               <div className="text-right">
                 <p className="text-sm font-semibold text-gray-800">Welcome, {fullName}</p>
-                {/* Optional last login in future */}
-                {/* <p className="text-xs text-gray-600">Last login: Today</p> */}
               </div>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-[color:var(--brand-blue)] to-[color:var(--brand-dark)] text-sm font-medium text-white">
                 {fullName.charAt(0).toUpperCase()}
