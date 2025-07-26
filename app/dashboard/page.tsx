@@ -3,88 +3,67 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+export const runtime = 'nodejs'; // firebase-admin requires Node runtime
+
 type XanoAdmin = {
-  id?: number;
-  email?: string;
   full_name?: string;
   name?: string;
-  first_name?: string;
-  last_name?: string;
-  // add any fields you care about (school_id, role, etc.)
+  school_id?: string | number;
+  // add any other fields you plan to use later
 };
-
-async function fetchAdminFromXano(email: string): Promise<XanoAdmin | null> {
-  const base = process.env.XANO_BASE_URL; // e.g. https://x8ki-letl-twmt.n7.xano.io/api:wWEItDWL
-  if (!base) {
-    console.error('XANO_BASE_URL is not set');
-    return null;
-  }
-
-  const apiKey = process.env.XANO_API_KEY || '';
-  const url = `${base}/admin_dashboard_checkAdmin?email=${encodeURIComponent(email)}`;
-
-  const headers: Record<string, string> = {
-    // If your endpoint is public you can omit these.
-    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    ...(apiKey ? { 'X-API-KEY': apiKey } : {}),
-  };
-
-  const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
-
-  if (!res.ok) {
-    // Helpful logging for debugging payloads/errors coming from Xano
-    const text = await res.text().catch(() => '');
-    console.error('Xano /admin_dashboard_checkAdmin failed:', res.status, text);
-    return null;
-  }
-
-  // Xano responses vary: could be an object, {items:[...]}, or {data:{...}}
-  const payload = await res.json();
-
-  if (payload && typeof payload === 'object') {
-    if (Array.isArray(payload)) return payload[0] ?? null;
-    if (payload.data && typeof payload.data === 'object') return payload.data as XanoAdmin;
-    if (payload.item && typeof payload.item === 'object') return payload.item as XanoAdmin;
-    if (payload.items && Array.isArray(payload.items)) return payload.items[0] ?? null;
-    return payload as XanoAdmin; // plain object
-  }
-
-  return null;
-}
-
-function getDisplayName(profile: XanoAdmin | null, emailFallback?: string) {
-  if (!profile) return emailFallback || 'Admin';
-  return (
-    profile.full_name ||
-    profile.name ||
-    (profile.first_name && profile.last_name
-      ? `${profile.first_name} ${profile.last_name}`
-      : profile.first_name || profile.last_name || emailFallback || 'Admin')
-  );
-}
 
 export default async function DashboardPage() {
   // ---- Require valid session
-  const cookieStore = cookies();
+  const cookieStore = await cookies(); // Next 15: cookies() is async
   const token = cookieStore.get('token')?.value;
   if (!token) redirect('/');
 
-  // Verify token with Firebase Admin and extract email
+  // ---- Verify Firebase token and extract email
   let email: string | undefined;
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin');
     const decoded = await getAdminAuth().verifyIdToken(token);
     email = decoded.email ?? undefined;
-    // Optional role gate:
-    // if (decoded.role !== 'admin') redirect('/dashboard/unauthorized');
-  } catch (e) {
-    console.error('Token verification failed:', e);
+    if (!email) {
+      // We must have an email to look up the admin in Xano
+      redirect('/');
+    }
+  } catch {
     redirect('/');
   }
 
-  // ---- Fetch admin profile from Xano using email
-  const xanoAdmin = email ? await fetchAdminFromXano(email) : null;
-  const displayName = getDisplayName(xanoAdmin, email);
+  // ---- Fetch admin profile from Xano to get full_name (and other attributes)
+  let fullName = 'Admin';
+  let schoolId: string | number | undefined;
+
+  try {
+    const base =
+      process.env.XANO_BASE_URL ||
+      process.env.NEXT_PUBLIC_XANO_BASE || // fallback if base is only public
+      '';
+
+    const url = `${base.replace(/\/$/, '')}/admin_dashboard_checkAdmin?email=${encodeURIComponent(
+      email!
+    )}`;
+
+    const headers: HeadersInit = {};
+    if (process.env.XANO_API_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
+    }
+
+    const res = await fetch(url, { headers, cache: 'no-store' });
+    if (res.ok) {
+      const payload = await res.json();
+      const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
+
+      fullName = record?.full_name || record?.name || fullName;
+      schoolId = record?.school_id;
+      // If you want to pass schoolId to sub-pages via querystring, you could do it here,
+      // but preferably read it again on each page using the same token->Xano lookup.
+    }
+  } catch {
+    // Ignore Xano errors for greeting; the dashboard still renders.
+  }
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -110,18 +89,8 @@ export default async function DashboardPage() {
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">System Online</span>
             </div>
-            {/* Avatar with initials from displayName */}
-            <div
-              aria-label={displayName}
-              title={displayName}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-xs font-medium text-white"
-            >
-              {displayName
-                .split(' ')
-                .map((s) => s[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase()}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
+              {fullName?.[0]?.toUpperCase() || 'A'}
             </div>
           </div>
         </div>
@@ -130,7 +99,7 @@ export default async function DashboardPage() {
       {/* Welcome */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome back, {displayName}</h2>
+          <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome back, {fullName}</h2>
           <p className="text-gray-600">Choose a quick action to get started.</p>
         </div>
       </section>
@@ -157,7 +126,14 @@ export default async function DashboardPage() {
             <p className="mt-1 text-sm text-gray-600">Find and view student information and attendance records.</p>
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
               Open
-              <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg
+                className="transition group-hover:translate-x-0.5"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+              >
                 <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
