@@ -1,5 +1,5 @@
 // app/layout.tsx
-import './globals.css';
+import 'app/globals.css';
 import type { ReactNode } from 'react';
 import { Montserrat } from 'next/font/google';
 
