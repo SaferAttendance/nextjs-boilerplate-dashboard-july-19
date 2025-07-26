@@ -2,10 +2,11 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import TeachersSearch from './TeachersSearch';
 
 export default async function TeachersPage() {
   // ---- Require valid session
-  const jar = await cookies(); // in your project cookies() is async
+  const jar = cookies(); // NOTE: no await here
   const token = jar.get('token')?.value;
   if (!token) redirect('/');
 
@@ -20,52 +21,71 @@ export default async function TeachersPage() {
   const fullName = jar.get('full_name')?.value ?? 'Admin';
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* Header (matches dashboard look) */}
-      <header className="border-b border-gray-200 bg-white shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-blue-400 to-blue-600 text-white">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <h1 className="text-lg font-semibold text-gray-900">Safer Attendance Dashboard</h1>
-          </div>
+    <main className="relative min-h-screen bg-gradient-to-br from-[color:var(--brand-blue)] via-[color:var(--brand-light)] to-white font-montserrat">
+      {/* Background blobs */}
+      <div className="pointer-events-none absolute inset-0 opacity-5">
+        <div className="absolute top-20 left-20 h-32 w-32 rounded-full bg-[color:var(--brand-dark)] blur-xl" />
+        <div className="absolute bottom-20 right-20 h-40 w-40 rounded-full bg-[color:var(--brand-blue)] blur-xl" />
+        <div className="absolute left-1/3 top-1/2 h-24 w-24 rounded-full bg-[color:var(--brand-light)] blur-lg" />
+        <div className="absolute right-1/4 top-1/3 h-28 w-28 rounded-full bg-[color:var(--brand-dark)] blur-xl" />
+      </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-              <span className="text-sm text-gray-600">System Online</span>
+      {/* Header */}
+      <header className="relative border-b border-white/20 bg-white/80 backdrop-blur-sm shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-4">
+            {/* Left: back + title */}
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/dashboard"
+                className="rounded-lg p-2 transition-colors duration-200 hover:bg-gray-100"
+                aria-label="Back to dashboard"
+              >
+                <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r from-[color:var(--brand-blue)] to-[color:var(--brand-dark)] text-white shadow-lg">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+
+              <div>
+                <h1 className="text-xl font-bold text-gray-800">Search Teachers</h1>
+                <p className="text-sm text-gray-600">Find teacher profiles and class information</p>
+              </div>
             </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
-              {fullName.charAt(0).toUpperCase()}
+
+            {/* Right: user chip */}
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-gray-800">Welcome, {fullName}</p>
+                {/* Optional last login in future */}
+                {/* <p className="text-xs text-gray-600">Last login: Today</p> */}
+              </div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-[color:var(--brand-blue)] to-[color:var(--brand-dark)] text-sm font-medium text-white">
+                {fullName.charAt(0).toUpperCase()}
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Page intro */}
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900">Search Teachers</h2>
-            <p className="mt-2 text-gray-600">Search by teacher name or email. Results are scoped by your district & school.</p>
-          </div>
-          <Link
-            href="/dashboard"
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow"
-          >
-            ← Back to Dashboard
-          </Link>
+      {/* Main */}
+      <section className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        {/* Page intro */}
+        <div className="mb-12 text-center">
+          <h2 className="mb-4 text-4xl font-bold text-gray-800">Find a Teacher</h2>
+          <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-700">
+            Search by teacher name or email address to view their class schedules and attendance information.
+          </p>
         </div>
 
-        {/* Client search UI */}
+        {/* Client search + results */}
         <TeachersSearch />
       </section>
     </main>
   );
 }
-
-// Import the client component without mixing "use client" here
-import TeachersSearch from './TeachersSearch';
