@@ -5,32 +5,30 @@ import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
 
-/** Shape returned by your Xano endpoint */
+/** Shape returned by our server route /api/admin/check */
 type AdminCheckResponse = {
   isAdmin: boolean;
   districtCode: string | null;
   schoolCode: string | null;
   email: string | null;
-  fullName?: string | null;
-  fullname?: string | null; // some responses use "fullname"
+  fullName: string | null;
 };
 
-/** Call Xano (or your proxy route) to verify admin + get scope fields */
-async function checkAdmin(email: string): Promise<AdminCheckResponse> {
-  const base =
-    process.env.NEXT_PUBLIC_XANO_ADMIN_CHECK_URL ??
-    '/api/admin/check'; // add a route handler to proxy if you prefer
-  const url = `${base}?email=${encodeURIComponent(email)}`;
+/** Call our server route (keeps Xano URL/API key server-side) */
+async function checkAdminViaApi(email: string): Promise<AdminCheckResponse> {
+  const res = await fetch('/api/admin/check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ email }),
+  });
 
-  const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-  if (!res.ok) throw new Error(`Admin check failed (${res.status})`);
-  const data = (await res.json()) as AdminCheckResponse;
-
-  // Normalize full name key
-  if (!('fullName' in data) && 'fullname' in data) {
-    (data as any).fullName = (data as any).fullname;
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(msg || `Admin check failed (${res.status})`);
   }
-  return data;
+
+  return (await res.json()) as AdminCheckResponse;
 }
 
 export default function LoginPage() {
@@ -60,41 +58,32 @@ export default function LoginPage() {
     }
 
     try {
-      // 0) Verify admin + get scope (districtCode, schoolCode, fullName, email)
-      let adminProfile: AdminCheckResponse | null = null;
+      // 0) Verify admin & get scope (districtCode, schoolCode, fullName, email)
+      let adminProfile: AdminCheckResponse;
       try {
-        adminProfile = await checkAdmin(email);
-      } catch (e) {
-        console.warn('Admin check request failed:', e);
-        throw new Error('Unable to verify your admin status. Please try again.');
-      }
-
-      if (!adminProfile) {
-        throw new Error('Unable to verify your admin status. Please try again.');
-      }
-
-      if (!adminProfile.email) {
-        // not found in Xano
+        adminProfile = await checkAdminViaApi(email);
+      } catch (e: any) {
         throw new Error(
-          "We couldn't find this email in our system. Please check for typos or contact your district admin."
+          e?.message ||
+          'Unable to verify your admin status right now. Please try again.'
         );
       }
 
-      if (!adminProfile.isAdmin) {
-        // found but not an admin
+      // Xano returns email=null for both "not found" and "not admin"
+      if (!adminProfile.email || !adminProfile.isAdmin) {
         throw new Error(
-          'Your account is verified but does not have administrator permissions. Please contact your district admin.'
+          'This account is not authorized for admin access. If you believe this is a mistake, contact your district admin.'
         );
       }
 
-      // 1) Firebase sign in (we do this only after confirming admin)
+      // 1) Firebase sign in (after confirming admin)
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         formData.password
       );
 
-      // 2) Create httpOnly session cookie on the server
+      // 2) Create httpOnly session cookie on server
       const idToken = await userCredential.user.getIdToken();
       const sessionRes = await fetch('/api/session', {
         method: 'POST',
@@ -103,23 +92,23 @@ export default function LoginPage() {
       });
       if (!sessionRes.ok) throw new Error('Failed to create a secure session.');
 
-      // 3) (Optional) Hydrate scope cookies immediately so dashboard pages can filter by district/school
+      // 3) Hydrate profile/scope cookies from server (if your session GET does that)
       try {
         await fetch('/api/session', { method: 'GET', cache: 'no-store' });
       } catch (e) {
+        // non-fatal
         console.warn('Session hydrate failed (continuing):', e);
       }
 
-      // 4) Also stash a client copy (temporary; server is source of truth)
-      const normalizedProfile = {
-        isAdmin: true,
-        districtCode: adminProfile.districtCode ?? null,
-        schoolCode: adminProfile.schoolCode ?? null,
-        email: adminProfile.email ?? email,
-        fullName: adminProfile.fullName ?? null,
-      };
+      // 4) (Optional) keep a client copy for quick reads; server remains source of truth
       try {
-        sessionStorage.setItem('sa_profile', JSON.stringify(normalizedProfile));
+        sessionStorage.setItem('sa_profile', JSON.stringify({
+          isAdmin: true,
+          districtCode: adminProfile.districtCode,
+          schoolCode: adminProfile.schoolCode,
+          email: adminProfile.email,
+          fullName: adminProfile.fullName,
+        }));
       } catch {}
 
       // 5) Go to dashboard
