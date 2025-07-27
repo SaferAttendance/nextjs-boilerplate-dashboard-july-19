@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, type ChangeEvent, type FormEvent } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
@@ -14,12 +14,12 @@ type AdminCheckResponse = {
   fullName: string | null;
 };
 
-/** Call our server route via GET (keeps Xano URL/API key server-side) */
+/** Call our server route (keeps Xano URL/API key server-side) */
 async function checkAdminViaApi(email: string): Promise<AdminCheckResponse> {
-  const res = await fetch(
-    `/api/admin/check?email=${encodeURIComponent(email)}`,
-    { method: 'GET', cache: 'no-store' }
-  );
+  const res = await fetch(`/api/admin/check?email=${encodeURIComponent(email)}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
 
   if (!res.ok) {
     const msg = await res.text().catch(() => '');
@@ -37,13 +37,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (error) setError('');
   }, [error]);
 
-  const handleSubmit = useCallback(async (e: FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
@@ -93,6 +93,8 @@ export default function LoginPage() {
       // 3) Hydrate profile/scope cookies from server (if your session GET does that)
       try {
         await fetch('/api/session', { method: 'GET', cache: 'no-store' });
+        // tiny delay to avoid any rare cookie race on fast redirects
+        await new Promise((r) => setTimeout(r, 50));
       } catch (e) {
         // non-fatal
         console.warn('Session hydrate failed (continuing):', e);
@@ -110,7 +112,7 @@ export default function LoginPage() {
       } catch {}
 
       // 5) Go to dashboard
-      router.push('/dashboard');
+      router.replace('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
       if (err?.code === 'auth/user-not-found') setError('No account found with this email.');
