@@ -136,24 +136,17 @@ export default function Page() {
 
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center space-x-8">
-              <a href="#features" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+              <a href="/features" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 Features
               </a>
-              <a href="#pricing" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
-                Pricing
+              <a href="/about" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+                About Us
               </a>
-              <a href="#testimonials" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
-                Schools
+              <a href="/Contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+                Contact
               </a>
-              <a href="#security" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
-                Security
-              </a>
-              <button
-                onClick={requestDemo}
-                className="bg-gradient-to-r from-brand-blue to-brand-dark text-white px-6 py-2 rounded-xl hover:shadow-lg hover:shadow-brand-blue/30 transition-all duration-300 font-medium"
-              >
-                Request Demo
-              </button>
+             
+             
               <button
                 onClick={adminLogin}
                 className="border border-brand-blue text-brand-dark px-6 py-2 rounded-xl hover:bg-brand-blue hover:text-white transition-all duration-300 font-medium"
@@ -180,14 +173,14 @@ export default function Page() {
           {/* Mobile Menu */}
           <div id="mobileMenu" className={`${isMobileOpen ? "" : "hidden"} lg:hidden pb-4`}>
             <div className="flex flex-col space-y-3">
-              <a href="#features" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+              <a href="/features" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 Features
               </a>
-              <a href="#pricing" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
-                Pricing
+              <a href="/about" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+                About Us
               </a>
-              <a href="#testimonials" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
-                Schools
+              <a href="/Contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+                Contact
               </a>
               <a href="#security" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 Security
