@@ -142,7 +142,7 @@ export default function Page() {
               <a href="/about" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 About Us
               </a>
-              <a href="/Contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+              <a href="/contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 Contact
               </a>
              
@@ -179,7 +179,7 @@ export default function Page() {
               <a href="/about" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 About Us
               </a>
-              <a href="/Contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
+              <a href="/contact" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
                 Contact
               </a>
               <a href="#security" className="text-gray-600 hover:text-brand-dark transition-colors font-medium">
