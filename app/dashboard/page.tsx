@@ -1,10 +1,12 @@
+// app/dashboard/page.tsx
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-const SESSION_COOKIE_NAMES = ['sa_session', '__session', 'session']; // adjust to your cookie name(s)
+const SESSION_COOKIE_NAMES = ['sa_session', '__session', 'session']; // adjust to your actual cookie name(s)
 
 export default async function DashboardPage() {
-  const jar = cookies();
+  // Next 15: cookies() is async
+  const jar = await cookies();
 
   // If none of these cookies exist, treat as unauthenticated and redirect.
   const hasSession = SESSION_COOKIE_NAMES.some((n) => !!jar.get(n)?.value);
