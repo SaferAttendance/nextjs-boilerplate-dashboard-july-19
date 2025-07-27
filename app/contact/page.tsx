@@ -2,7 +2,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Script from 'next/script';
 
 export default function ContactPage() {
@@ -11,6 +11,9 @@ export default function ContactPage() {
   // Mobile menu
   const [mobileOpen, setMobileOpen] = useState(false);
   const toggleMobileMenu = useCallback(() => setMobileOpen(o => !o), []);
+
+  // Tabs: 'calendar' | 'form'
+  const [activeTab, setActiveTab] = useState<'calendar' | 'form'>('calendar');
 
   // Smooth-scroll helper
   const smoothScroll = useCallback((selector: string) => {
@@ -28,7 +31,7 @@ export default function ContactPage() {
   }, []);
 
   const startLiveChat = useCallback(() => {
-    // Wire this to your chat provider (Intercom/Crisp/Drift) as desired
+    // TODO: wire to real chat (Intercom/Crisp/Drift) here
     alert('Live chat opening... Connect with our support team instantly!');
   }, []);
 
@@ -37,12 +40,73 @@ export default function ContactPage() {
   }, []);
 
   const openMap = useCallback(() => {
+    // Replace with your office Google Maps link
     window.open('https://maps.google.com/?q=Safer+Attendance+Headquarters', '_blank');
   }, []);
 
   const contactExecutive = useCallback((name: string, title: string) => {
     const pretty = name.charAt(0).toUpperCase() + name.slice(1);
     alert(`Connecting you with ${pretty}, our ${title}. They'll be in touch within 24 hours!`);
+    // Optionally mailto:
+    // window.location.href = `mailto:info@saferattendance.com?subject=For%20${encodeURIComponent(pretty)}%20(${encodeURIComponent(title)})`;
+  }, []);
+
+  // Contact form submit
+  const onSubmitForm = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+
+    // Basic validation
+    const required = ['firstName', 'lastName', 'email', 'organization', 'inquiryType', 'message', 'consent'];
+    const missing = required.filter(k => !data[k]);
+    if (missing.length) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+    // Simple email check
+    const email = String(data.email || '');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+
+    // TODO: Replace with real submit (Next.js API route or external service)
+    console.log('Form submitted:', data);
+    alert("Thank you for your message! We'll get back to you within 24 hours.");
+
+    form.reset();
+  }, []);
+
+  // Real-time validation styling
+  useEffect(() => {
+    const form = document.getElementById('contactForm') as HTMLFormElement | null;
+    if (!form) return;
+    const inputs = Array.from(form.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input[required], select[required], textarea[required]'));
+    const onBlur = function (this: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) {
+      if (this.value.trim() === '') {
+        this.classList.add('border-red-300');
+        this.classList.remove('border-gray-200');
+      } else {
+        this.classList.remove('border-red-300');
+        this.classList.add('border-gray-200');
+      }
+    };
+    inputs.forEach(i => i.addEventListener('blur', onBlur));
+    const emailInput = document.getElementById('email') as HTMLInputElement | null;
+    const onEmailBlur = function (this: HTMLInputElement) {
+      const val = this.value;
+      const ok = !val || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      this.classList.toggle('border-red-300', !ok);
+      this.classList.toggle('border-gray-200', ok);
+    };
+    emailInput?.addEventListener('blur', onEmailBlur);
+
+    return () => {
+      inputs.forEach(i => i.removeEventListener('blur', onBlur));
+      emailInput?.removeEventListener('blur', onEmailBlur);
+    };
   }, []);
 
   // Entrance animations for leadership cards
@@ -73,12 +137,32 @@ export default function ContactPage() {
     return () => observer.disconnect();
   }, []);
 
+  const calendarTabBtnClass = useMemo(
+    () =>
+      `px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
+        activeTab === 'calendar'
+          ? 'bg-gradient-to-r from-brand-blue to-brand-dark text-white hover:shadow-lg'
+          : 'bg-white/70 text-gray-700 hover:bg-white/90 border border-gray-200'
+      }`,
+    [activeTab]
+  );
+
+  const formTabBtnClass = useMemo(
+    () =>
+      `px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
+        activeTab === 'form'
+          ? 'bg-gradient-to-r from-brand-blue to-brand-dark text-white hover:shadow-lg'
+          : 'bg-white/70 text-gray-700 hover:bg-white/90 border border-gray-200'
+      }`,
+    [activeTab]
+  );
+
   return (
     <main className="font-montserrat bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
-      {/* Calendly script */}
+      {/* Calendly script (for inline widget) */}
       <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
 
-      {/* Animated Background */}
+      {/* Animated Background Elements */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-light/10 blur-3xl animate-pulse" />
         <div
@@ -113,7 +197,10 @@ export default function ContactPage() {
 
             {/* Navigation Links */}
             <div className="hidden items-center space-x-8 md:flex">
-              <button onClick={goHome} className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">
+              <button
+                onClick={goHome}
+                className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
+              >
                 Home
               </button>
               <button
@@ -123,7 +210,7 @@ export default function ContactPage() {
                 Contact Info
               </button>
               <button
-                onClick={() => smoothScroll('#quick-contact')}
+                onClick={() => smoothScroll('#contact-form')}
                 className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
               >
                 Send Message
@@ -164,7 +251,7 @@ export default function ContactPage() {
                   goHome();
                   setMobileOpen(false);
                 }}
-                className="text-left font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
+                className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark text-left"
               >
                 Home
               </button>
@@ -173,16 +260,16 @@ export default function ContactPage() {
                   smoothScroll('#contact-info');
                   setMobileOpen(false);
                 }}
-                className="text-left font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
+                className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark text-left"
               >
                 Contact Info
               </button>
               <button
                 onClick={() => {
-                  smoothScroll('#quick-contact');
+                  smoothScroll('#contact-form');
                   setMobileOpen(false);
                 }}
-                className="text-left font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
+                className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark text-left"
               >
                 Send Message
               </button>
@@ -191,7 +278,7 @@ export default function ContactPage() {
                   smoothScroll('#team-contact');
                   setMobileOpen(false);
                 }}
-                className="text-left font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark"
+                className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark text-left"
               >
                 Our Team
               </button>
@@ -209,7 +296,7 @@ export default function ContactPage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
+      {/* Hero Section (cleaned — redundant top blocks removed) */}
       <section className="relative py-20 lg:py-32">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center">
@@ -236,184 +323,402 @@ export default function ContactPage() {
               Get in touch today for a personalized consultation.
             </p>
 
-            {/* Simple CTA buttons (scroll) */}
-            <div className="mx-auto flex max-w-4xl justify-center gap-4">
-              <button
-                onClick={() => smoothScroll('#schedule')}
-                className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-8 py-3 font-semibold text-white transition-all duration-300 hover:shadow-lg"
-              >
-                Schedule Meeting
-              </button>
-              <button
-                onClick={() => smoothScroll('#quick-contact')}
-                className="rounded-xl border border-gray-200 bg-white/70 px-8 py-3 font-semibold text-gray-700 transition-all duration-300 hover:bg-white/90"
-              >
-                Send Message
-              </button>
+            {/* Contact Method Tabs */}
+            <div className="mx-auto mb-8 max-w-4xl">
+              <div className="mb-8 flex justify-center space-x-4">
+                <button onClick={() => setActiveTab('calendar')} id="calendar-tab" className={calendarTabBtnClass}>
+                  Schedule Meeting
+                </button>
+                <button onClick={() => setActiveTab('form')} id="form-tab" className={formTabBtnClass}>
+                  Send Message
+                </button>
+              </div>
             </div>
+            {/* (Removed the hero's "Schedule Your Consultation" box + 3 quick-contact cards) */}
           </div>
         </div>
       </section>
 
-      {/* Schedule Section (Calendly) */}
-      <section id="schedule" className="relative py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl">
-            <div className="rounded-3xl border border-white/20 bg-white/70 p-2 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
-              <div
-                className="calendly-inline-widget"
-                data-url="https://calendly.com/safer-attendance/30min"
-                style={{ minWidth: '320px', height: '800px' }}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Quick Answers (chat-style FAQ) */}
-      <section className="relative py-20">
+      {/* Contact Form Section */}
+      <section id="contact-form" className="relative py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-16 text-center">
             <h2 className="mb-6 text-4xl font-bold text-gray-800 md:text-5xl">
-              Quick <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Answers</span>
+              Get In{' '}
+              <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Touch</span>
             </h2>
-            <p className="text-xl text-gray-600">Common questions before you contact us.</p>
+            <p className="mx-auto max-w-3xl text-xl text-gray-600">
+              Send us a message or schedule a meeting directly with our team.
+            </p>
           </div>
 
-          <div className="mx-auto max-w-2xl">
-            <div className="rounded-3xl border border-white/20 bg-white/70 p-6 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
-              {/* Chat Header */}
-              <div className="mb-6 flex items-center space-x-3 border-b border-gray-200 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                  <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-800">Safer Attendance Support</h3>
-                  <p className="flex items-center text-sm text-green-500">
-                    <span className="mr-2 h-2 w-2 rounded-full bg-green-500" />
-                    Online now
-                  </p>
-                </div>
+          {/* Optional top info box — kept here as part of the main contact section */}
+          <div className="mx-auto mb-8 max-w-4xl">
+            <div className="rounded-2xl border border-white/20 bg-white/70 p-6 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
+              <div className="text-center">
+                <h3 className="mb-2 text-xl font-bold text-gray-800">Schedule Your Consultation</h3>
+                <p className="text-gray-600">
+                  Choose a time that works best for you to discuss your school's attendance needs.
+                </p>
               </div>
+            </div>
+          </div>
 
-              {/* Chat Messages */}
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {/* Q1 */}
-                <div className="flex justify-end">
-                  <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-4 py-3 text-sm text-white">
-                    <p>How quickly can we get started?</p>
-                    <p className="mt-1 text-xs opacity-75">2:14 PM</p>
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+            {/* Left: Calendly or Form */}
+            <div className="lg:col-span-2">
+              {/* Contact Form Container */}
+              {activeTab === 'form' && (
+                <div id="contact-form-container">
+                  <div className="rounded-3xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl lg:p-12">
+                    <form id="contactForm" onSubmit={onSubmitForm} className="space-y-6">
+                      {/* Personal Information */}
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-gray-800">
+                            First Name *
+                          </label>
+                          <input
+                            type="text"
+                            id="firstName"
+                            name="firstName"
+                            required
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="Enter your first name"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="lastName" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Last Name *
+                          </label>
+                          <input
+                            type="text"
+                            id="lastName"
+                            name="lastName"
+                            required
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="Enter your last name"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Contact Information */}
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="email" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Email Address *
+                          </label>
+                          <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            required
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="your.email@school.edu"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="phone" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Phone Number
+                          </label>
+                          <input
+                            type="tel"
+                            id="phone"
+                            name="phone"
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="(555) 123-4567"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Organization Information */}
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="organization" className="mb-2 block text-sm font-semibold text-gray-800">
+                            School/Organization *
+                          </label>
+                          <input
+                            type="text"
+                            id="organization"
+                            name="organization"
+                            required
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="Your School Name"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="title" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Job Title
+                          </label>
+                          <input
+                            type="text"
+                            id="title"
+                            name="title"
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                            placeholder="Principal, IT Director, etc."
+                          />
+                        </div>
+                      </div>
+
+                      {/* Student Count and Inquiry Type */}
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="studentCount" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Number of Students
+                          </label>
+                          <select
+                            id="studentCount"
+                            name="studentCount"
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                          >
+                            <option value="">Select range</option>
+                            <option value="1-100">1-100 students</option>
+                            <option value="101-500">101-500 students</option>
+                            <option value="501-1000">501-1,000 students</option>
+                            <option value="1001-2500">1,001-2,500 students</option>
+                            <option value="2501-5000">2,501-5,000 students</option>
+                            <option value="5000+">5,000+ students</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label htmlFor="inquiryType" className="mb-2 block text-sm font-semibold text-gray-800">
+                            Inquiry Type *
+                          </label>
+                          <select
+                            id="inquiryType"
+                            name="inquiryType"
+                            required
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                          >
+                            <option value="">Select inquiry type</option>
+                            <option value="sales">Sales & Pricing</option>
+                            <option value="demo">Request Demo</option>
+                            <option value="support">Technical Support</option>
+                            <option value="partnership">Partnership Opportunities</option>
+                            <option value="integration">System Integration</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Message */}
+                      <div>
+                        <label htmlFor="message" className="mb-2 block text-sm font-semibold text-gray-800">
+                          Message *
+                        </label>
+                        <textarea
+                          id="message"
+                          name="message"
+                          rows={6}
+                          required
+                          className="w-full resize-none rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                          placeholder="Tell us about your school's needs and how we can help..."
+                        />
+                      </div>
+
+                      {/* File Upload */}
+                      <div>
+                        <label htmlFor="attachment" className="mb-2 block text-sm font-semibold text-gray-800">
+                          Attachment (Optional)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="file"
+                            id="attachment"
+                            name="attachment"
+                            accept=".pdf,.doc,.docx,.txt"
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                          />
+                          <p className="mt-2 text-sm text-gray-500">Accepted formats: PDF, DOC, DOCX, TXT (Max 10MB)</p>
+                        </div>
+                      </div>
+
+                      {/* Consent */}
+                      <div className="flex items-start space-x-3">
+                        <input
+                          type="checkbox"
+                          id="consent"
+                          name="consent"
+                          required
+                          className="mt-1 h-5 w-5 rounded border-gray-300 bg-white text-brand-blue focus:ring-2 focus:ring-brand-blue/50"
+                        />
+                        <label htmlFor="consent" className="text-sm leading-relaxed text-gray-600">
+                          I agree to receive communications from Safer Attendance regarding my inquiry. You can unsubscribe at any time.{' '}
+                          <a href="#" className="text-brand-dark hover:underline">
+                            Privacy Policy
+                          </a>
+                        </label>
+                      </div>
+
+                      {/* Submit */}
+                      <div className="pt-6 text-center">
+                        <button
+                          type="submit"
+                          className="mx-auto flex items-center space-x-3 rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-12 py-4 text-lg font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-brand-blue/30"
+                        >
+                          <span>Send Message</span>
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          </svg>
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 </div>
-                <div className="flex items-start space-x-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              )}
+
+              {/* Calendly Container */}
+              {activeTab === 'calendar' && (
+                <div id="calendly-container">
+                  <div className="rounded-3xl border border-white/20 bg-white/70 p-2 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
+                    {/* Calendly inline widget begin */}
+                    <div
+                      className="calendly-inline-widget"
+                      data-url="https://calendly.com/safer-attendance/30min"
+                      style={{ minWidth: '320px', height: '800px' }}
+                    />
+                    {/* Calendly inline widget end */}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Quick Answers (chat-style) */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-8 rounded-3xl border border-white/20 bg-white/70 p-6 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
+                <div className="mb-6 text-center">
+                  <h3 className="mb-2 text-2xl font-bold text-gray-800">
+                    Quick <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Answers</span>
+                  </h3>
+                  <p className="text-gray-600">Common questions before you contact us.</p>
+                </div>
+
+                {/* Chat Header */}
+                <div className="flex items-center space-x-3 border-b border-gray-200 pb-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                   </div>
-                  <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-4 py-3 text-gray-800">
-                    <p className="text-sm">Most schools can be up and running within 1–2 weeks. We handle all setup, training, and data migration for you! 🚀</p>
-                    <p className="mt-1 text-xs text-gray-500">2:14 PM</p>
+                  <div>
+                    <h4 className="font-semibold text-gray-800">Safer Attendance Support</h4>
+                    <p className="flex items-center text-sm text-green-500">
+                      <span className="mr-2 h-2 w-2 rounded-full bg-green-500" />
+                      Online now
+                    </p>
                   </div>
                 </div>
 
-                {/* Q2 */}
-                <div className="flex justify-end">
-                  <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-4 py-3 text-sm text-white">
-                    <p>Do you offer free trials?</p>
-                    <p className="mt-1 text-xs opacity-75">2:15 PM</p>
+                {/* Chat Messages */}
+                <div className="space-y-3 overflow-y-auto max-h-96 mt-4">
+                  {/* Q1 */}
+                  <div className="flex justify-end">
+                    <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-3 py-2 text-sm text-white">
+                      <p>How quickly can we get started?</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  <div className="flex items-start space-x-2">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                      <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
+                      <p>Most schools can be up and running within 1–2 weeks. We handle all setup, training, and data migration for you! 🚀</p>
+                    </div>
                   </div>
-                  <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-4 py-3 text-gray-800">
-                    <p className="text-sm">Yes! We offer a 30-day free trial with full access to all features. No credit card required to start. ✨</p>
-                    <p className="mt-1 text-xs text-gray-500">2:15 PM</p>
-                  </div>
-                </div>
 
-                {/* Q3 */}
-                <div className="flex justify-end">
-                  <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-4 py-3 text-sm text-white">
-                    <p>What support do you provide?</p>
-                    <p className="mt-1 text-xs opacity-75">2:16 PM</p>
+                  {/* Q2 */}
+                  <div className="flex justify-end">
+                    <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-3 py-2 text-sm text-white">
+                      <p>Do you offer free trials?</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  <div className="flex items-start space-x-2">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                      <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
+                      <p>Yes! We offer a 30-day free trial with full access to all features. No credit card required to start. ✨</p>
+                    </div>
                   </div>
-                  <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-4 py-3 text-gray-800">
-                    <p className="text-sm">We provide 24/7 emergency support, comprehensive training, ongoing technical assistance, and dedicated account management. 💪</p>
-                    <p className="mt-1 text-xs text-gray-500">2:16 PM</p>
-                  </div>
-                </div>
 
-                {/* Q4 */}
-                <div className="flex justify-end">
-                  <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-4 py-3 text-sm text-white">
-                    <p>How much does it cost?</p>
-                    <p className="mt-1 text-xs opacity-75">2:17 PM</p>
+                  {/* Q3 */}
+                  <div className="flex justify-end">
+                    <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-3 py-2 text-sm text-white">
+                      <p>What support do you provide?</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  <div className="flex items-start space-x-2">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                      <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
+                      <p>We provide 24/7 emergency support, comprehensive training, ongoing technical assistance, and dedicated account management. 💪</p>
+                    </div>
                   </div>
-                  <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-4 py-3 text-gray-800">
-                    <p className="text-sm">Pricing varies by school size and features. Let's schedule a call to discuss your specific needs and get you a custom quote! 💰</p>
-                    <p className="mt-1 text-xs text-gray-500">2:17 PM</p>
-                  </div>
-                </div>
 
-                {/* Typing indicator */}
-                <div className="flex items-start space-x-2">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
-                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  {/* Q4 */}
+                  <div className="flex justify-end">
+                    <div className="max-w-xs rounded-2xl rounded-br-md bg-brand-blue px-3 py-2 text-sm text-white">
+                      <p>How much does it cost?</p>
+                    </div>
                   </div>
-                  <div className="rounded-2xl rounded-bl-md bg-gray-100 px-4 py-2">
-                    <div className="flex space-x-1">
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.1s' }} />
-                      <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.2s' }} />
+                  <div className="flex items-start space-x-2">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                      <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="max-w-sm rounded-2xl rounded-bl-md bg-gray-100 px-3 py-2 text-sm text-gray-800">
+                      <p>Pricing varies by school size and features. Let's schedule a call to discuss your specific needs and get you a custom quote! 💰</p>
+                    </div>
+                  </div>
+
+                  {/* Typing indicator */}
+                  <div className="flex items-start space-x-2">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-blue to-brand-dark">
+                      <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="rounded-2xl rounded-bl-md bg-gray-100 px-3 py-2">
+                      <div className="flex space-x-1">
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.1s' }} />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: '0.2s' }} />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Chat Input */}
-              <div className="mt-6 border-t border-gray-200 pt-4">
-                <div className="flex items-center space-x-3">
-                  <div className="flex-1 rounded-full bg-gray-100 px-4 py-2">
-                    <input
-                      type="text"
-                      placeholder="Ask us anything..."
-                      className="w-full bg-transparent text-sm text-gray-600 placeholder-gray-400 focus:outline-none"
-                      readOnly
-                    />
+                {/* Chat Input */}
+                <div className="mt-6 border-t border-gray-200 pt-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-1 rounded-full bg-gray-100 px-3 py-2">
+                      <input
+                        type="text"
+                        placeholder="Ask us anything..."
+                        className="w-full bg-transparent text-sm text-gray-600 placeholder-gray-400 focus:outline-none"
+                        readOnly
+                      />
+                    </div>
+                    <button
+                      onClick={startLiveChat}
+                      className="rounded-full bg-gradient-to-r from-brand-blue to-brand-dark p-2 text-white transition-all duration-300 hover:shadow-lg"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                    </button>
                   </div>
-                  <button
-                    onClick={startLiveChat}
-                    className="rounded-full bg-gradient-to-r from-brand-blue to-brand-dark p-2 text-white transition-all duration-300 hover:shadow-lg"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  </button>
+                  <p className="mt-2 text-center text-xs text-gray-500">Click the send button to start a real conversation with our team!</p>
                 </div>
-                <p className="mt-2 text-center text-xs text-gray-500">Click the send button to start a real conversation with our team!</p>
               </div>
             </div>
           </div>
@@ -425,7 +730,8 @@ export default function ContactPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-16 text-center">
             <h2 className="mb-6 text-4xl font-bold text-gray-800 md:text-5xl">
-              Contact <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Information</span>
+              Contact{' '}
+              <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Information</span>
             </h2>
             <p className="text-xl text-gray-600">Multiple ways to reach us for all your needs.</p>
           </div>
@@ -659,8 +965,8 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* Quick Contact Options */}
-      <section id="quick-contact" className="relative bg-white/30 py-20 backdrop-blur-sm">
+      {/* Quick Contact Options Section (kept here; hero duplicates removed) */}
+      <section className="relative bg-white/30 py-20 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-16 text-center">
             <h2 className="mb-6 text-4xl font-bold text-gray-800 md:text-5xl">
