@@ -1503,8 +1503,18 @@ export default function Page() {
               <h4 className="text-lg font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-gray-400">
                 <li>
-                  <a href="#features" className="hover:text-white transition-colors">
+                  <a href="/features" className="hover:text-white transition-colors">
                     Features
+                  </a>
+                </li>
+ <li>
+                  <a href="/about" className="hover:text-white transition-colors">
+                    About Us
+                  </a>
+                </li>
+ <li>
+                  <a href="/contact" className="hover:text-white transition-colors">
+                    Contact
                   </a>
                 </li>
                 <li>
