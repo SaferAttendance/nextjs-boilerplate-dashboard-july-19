@@ -319,9 +319,9 @@ export default function Page() {
                 </span>
                 <br />
                 Every Parent{" "}
-                <span className="bg-gradient-to-r from-safety-green to-emerald-600 bg-clip-text text-transparent">
-                  Informed
-                </span>
+                <span className="bg-gradient-to-r from-emerald-700 to-emerald-900 bg-clip-text text-transparent drop-shadow-md">
+  Informed
+</span>
               </h1>
 
               {/* Subheadline */}
