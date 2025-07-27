@@ -4,9 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 
-export const metadata = {
-  title: 'Features - Safer Attendance',
-};
 
 export default function FeaturesPage() {
   const router = useRouter();
