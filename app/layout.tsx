@@ -1,25 +1,24 @@
-// app/layout.tsx
-import '../global.css';
-import type { ReactNode } from 'react';
-import { Montserrat } from 'next/font/google';
+import './globals.css'
+import type { Metadata } from 'next'
+import { Montserrat } from 'next/font/google'
 
 const montserrat = Montserrat({
   subsets: ['latin'],
-  weight: ['400', '600', '700'],
   variable: '--font-montserrat',
-});
+  display: 'swap',
+})
 
-export const metadata = {
-  title: 'Safer Attendance',
-  description: 'Ensuring Safety One Class At A Time While Promoting Attendance',
-};
+export const metadata: Metadata = {
+  title: 'Safer Attendance - Complete School Safety & Attendance Management',
+  description: 'School safety platform with attendance, emergency response, and parent communication.',
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={montserrat.variable}>
-      <body className="font-montserrat antialiased bg-gray-50 text-gray-900">
+    <html lang="en" className="scroll-smooth">
+      <body className={`${montserrat.variable} font-montserrat bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50`}>
         {children}
       </body>
     </html>
-  );
+  )
 }
