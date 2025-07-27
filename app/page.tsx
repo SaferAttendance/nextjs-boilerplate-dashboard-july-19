@@ -157,10 +157,22 @@ export default function Page() {
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center space-x-8">
               <a
-                href="#features"
+                href="/features"
                 className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
               >
                 Features
+              </a>
+  <a
+                href="/about"
+                className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
+              >
+                About Us
+              </a>
+  <a
+                href="/contact"
+                className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
+              >
+                Contact
               </a>
               <a
                 href="#pricing"
@@ -223,10 +235,22 @@ export default function Page() {
           <div className={`${isMobileOpen ? "" : "hidden"} lg:hidden pb-4`}>
             <div className="flex flex-col space-y-3">
               <a
-                href="#features"
+                href="/features"
                 className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
               >
                 Features
+              </a>
+<a
+                href="/about"
+                className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
+              >
+                About Us
+              </a>
+<a
+                href="/contact"
+                className="text-gray-600 hover:text-brand-dark transition-colors font-medium"
+              >
+                Contact
               </a>
               <a
                 href="#pricing"
