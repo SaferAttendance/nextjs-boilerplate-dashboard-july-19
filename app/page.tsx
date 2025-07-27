@@ -6,10 +6,10 @@ export default function Page() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // Handlers (kept identical to your current UX)
-  const adminLogin = () => {
-    console.log("Admin login clicked");
-    alert("Redirecting to admin login portal...");
-  };
+    const adminLogin = useCallback(() => {
+    router.push('/admin/login');
+  }, [router]);
+
 
   const requestDemo = () => {
     console.log("Demo requested");
@@ -147,12 +147,13 @@ export default function Page() {
               </a>
              
              
-              <button
+               <button
                 onClick={adminLogin}
-                className="border border-brand-blue text-brand-dark px-6 py-2 rounded-xl hover:bg-brand-blue hover:text-white transition-all duration-300 font-medium"
+                className="bg-gradient-to-r from-[#93BEE6] to-[#6B9BD9] text-white px-6 py-3 rounded-xl hover:shadow-lg hover:shadow-[#93BEE6]/30 transition-all duration-300 font-medium hover:scale-105"
               >
-                Login
+                Admin Login
               </button>
+
             </div>
 
             {/* Mobile Menu Button */}
@@ -191,12 +192,13 @@ export default function Page() {
               >
                 Request Demo
               </button>
-              <button
+           <button
                 onClick={adminLogin}
-                className="border border-brand-blue text-brand-dark px-6 py-3 rounded-xl font-medium w-full"
+                className="bg-gradient-to-r from-[#93BEE6] to-[#6B9BD9] text-white px-6 py-3 rounded-xl hover:shadow-lg hover:shadow-[#93BEE6]/30 transition-all duration-300 font-medium w-full"
               >
-                Login
+                Admin Login
               </button>
+
             </div>
           </div>
         </div>
