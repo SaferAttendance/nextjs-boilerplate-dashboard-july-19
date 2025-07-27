@@ -1,19 +1,31 @@
-// tailwind.config.ts
-import type { Config } from 'tailwindcss';
+import type { Config } from 'tailwindcss'
 
-export default {
+const config: Config = {
   content: [
-    './app/**/*.{js,ts,jsx,tsx}',
-    './components/**/*.{js,ts,jsx,tsx}',
-    './lib/**/*.{js,ts,jsx,tsx}',
+    './app/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './pages/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {
       fontFamily: {
-        // Use the CSS variable injected by next/font
-        montserrat: ['var(--font-montserrat)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        montserrat: ['var(--font-montserrat)'],
+      },
+      colors: {
+        'brand-blue': '#93BEE6',
+        'brand-light': '#B8D4F0',
+        'brand-dark': '#6B9BD9',
+        'accent-emerald': '#10B981',
+        'accent-purple': '#8B5CF6',
+        'accent-orange': '#F59E0B',
+        'accent-rose': '#F43F5E',
+        'accent-cyan': '#06B6D4',
+        'accent-indigo': '#6366F1',
+        'safety-red': '#DC2626',
+        'safety-green': '#059669',
       },
     },
   },
   plugins: [],
-} satisfies Config;
+}
+export default config
