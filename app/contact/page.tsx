@@ -339,30 +339,6 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* Contact Form Section */}
-      <section id="contact-form" className="relative py-20">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-16 text-center">
-            <h2 className="mb-6 text-4xl font-bold text-gray-800 md:text-5xl">
-              Get In{' '}
-              <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Touch</span>
-            </h2>
-            <p className="mx-auto max-w-3xl text-xl text-gray-600">
-              Send us a message or schedule a meeting directly with our team.
-            </p>
-          </div>
-
-          {/* Optional top info box — kept here as part of the main contact section */}
-          <div className="mx-auto mb-8 max-w-4xl">
-            <div className="rounded-2xl border border-white/20 bg-white/70 p-6 shadow-lg shadow-gray-200/50 backdrop-blur-xl">
-              <div className="text-center">
-                <h3 className="mb-2 text-xl font-bold text-gray-800">Schedule Your Consultation</h3>
-                <p className="text-gray-600">
-                  Choose a time that works best for you to discuss your school's attendance needs.
-                </p>
-              </div>
-            </div>
-          </div>
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
