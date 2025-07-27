@@ -67,9 +67,9 @@ export default function LandingPage() {
 
             {/* Navigation Links */}
             <div className="hidden items-center space-x-8 md:flex">
-              <a href="#features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
-              <a href="#about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
-              <a href="#contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
+              <a href="/features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
+              <a href="/about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
+              <a href="/contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
               <button onClick={adminLogin} className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-6 py-3 font-medium text-white transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-brand-blue/30">
                 Admin Login
               </button>
@@ -88,9 +88,9 @@ export default function LandingPage() {
           {/* Mobile Menu */}
           <div id="mobileMenu" className="hidden pb-6 md:hidden">
             <div className="flex flex-col space-y-4">
-              <a href="#features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
-              <a href="#about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
-              <a href="#contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
+              <a href="#/features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
+              <a href="#/about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
+              <a href="#/contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
               <button onClick={adminLogin} className="w-full rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-6 py-3 font-medium text-white transition-all duration-300 hover:shadow-lg hover:shadow-brand-blue/30">
                 Admin Login
               </button>
@@ -362,10 +362,10 @@ export default function LandingPage() {
             <div>
               <h4 className="mb-4 text-lg font-semibold">Quick Links</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#features" className="transition-colors duration-300 hover:text-white">Features</a></li>
-                <li><a href="#about" className="transition-colors duration-300 hover:text-white">About</a></li>
-                <li><a href="#" className="transition-colors duration-300 hover:text-white">Privacy Policy</a></li>
-                <li><a href="#" className="transition-colors duration-300 hover:text-white">Terms of Service</a></li>
+                <li><a href="/features" className="transition-colors duration-300 hover:text-white">Features</a></li>
+                <li><a href="/about" className="transition-colors duration-300 hover:text-white">About</a></li>
+                <li><a href="PrivacyPolicy" className="transition-colors duration-300 hover:text-white">Privacy Policy</a></li>
+                <li><a href="Terms" className="transition-colors duration-300 hover:text-white">Terms of Service</a></li>
               </ul>
             </div>
             <div>
@@ -378,7 +378,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="mt-12 border-t border-gray-800 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 Safer Attendance. All rights reserved.</p>
+            <p>&copy; 2025 Safer Attendance. All rights reserved.</p>
           </div>
         </div>
       </footer>
