@@ -15,7 +15,8 @@ export default function LandingPage() {
     document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
   }
   function requestDemo() {
-    alert("Demo request submitted! We'll contact you within 24 hours.");
+    // CHANGED: route to /contact
+    router.push('/contact');
   }
   function toggleMobileMenu() {
     const menu = document.getElementById('mobileMenu');
@@ -88,9 +89,10 @@ export default function LandingPage() {
           {/* Mobile Menu */}
           <div id="mobileMenu" className="hidden pb-6 md:hidden">
             <div className="flex flex-col space-y-4">
-              <a href="#/features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
-              <a href="#/about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
-              <a href="#/contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
+              {/* CHANGED: fixed #/ paths */}
+              <a href="/features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
+              <a href="/about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
+              <a href="/contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
               <button onClick={adminLogin} className="w-full rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-6 py-3 font-medium text-white transition-all duration-300 hover:shadow-lg hover:shadow-brand-blue/30">
                 Admin Login
               </button>
@@ -199,7 +201,7 @@ export default function LandingPage() {
             <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-accent-orange/20">
               <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-orange to-orange-600 shadow-lg shadow-accent-orange/25 transition-transform duration-300 group-hover:scale-110">
                 <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4 4 0 00-6.364 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4 4 0 00-6.364 0z" />
                 </svg>
               </div>
               <h3 className="mb-4 text-2xl font-semibold text-gray-800">Easy Integration</h3>
