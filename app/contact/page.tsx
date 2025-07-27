@@ -342,57 +342,54 @@ export default function ContactPage() {
 <section id="contact-form" className="relative py-20">
   <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
-    {/* 👉 Keep everything that originally came AFTER the info box here.
-        For example: your tabs, the main grid with:
-          - <div id="contact-form-container">…</div>
-          - <div id="calendly-container">…</div>
-          - Quick Answers sidebar (if it lives in this section)
-        Do not change their IDs or structure so showContactMethod() continues to work. */}
-        
-    {/* ...your existing content below this comment remains unchanged... */}
 
-  </div>
-</section>
+   {/* Contact Form Section (header + info box removed) */}
+<section id="contact-form" className="relative py-20">
+  <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
 
+    {/* Main Content Grid */}
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      {/* Left: Calendly or Form */}
+      <div className="lg:col-span-2">
+        {/* Contact Form Container */}
+        {activeTab === 'form' && (
+          <div id="contact-form-container">
+            <div className="rounded-3xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl lg:p-12">
+              <form id="contactForm" onSubmit={onSubmitForm} className="space-y-6">
+                {/* Personal Information */}
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-gray-800">
+                      First Name *
+                    </label>
+                    <input
+                      type="text"
+                      id="firstName"
+                      name="firstName"
+                      required
+                      className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                      placeholder="Enter your first name"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lastName" className="mb-2 block text-sm font-semibold text-gray-800">
+                      Last Name *
+                    </label>
+                    <input
+                      type="text"
+                      id="lastName"
+                      name="lastName"
+                      required
+                      className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
+                      placeholder="Enter your last name"
+                    />
+                  </div>
+                </div>
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-            {/* Left: Calendly or Form */}
-            <div className="lg:col-span-2">
-              {/* Contact Form Container */}
-              {activeTab === 'form' && (
-                <div id="contact-form-container">
-                  <div className="rounded-3xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl lg:p-12">
-                    <form id="contactForm" onSubmit={onSubmitForm} className="space-y-6">
-                      {/* Personal Information */}
-                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <div>
-                          <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-gray-800">
-                            First Name *
-                          </label>
-                          <input
-                            type="text"
-                            id="firstName"
-                            name="firstName"
-                            required
-                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
-                            placeholder="Enter your first name"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="lastName" className="mb-2 block text-sm font-semibold text-gray-800">
-                            Last Name *
-                          </label>
-                          <input
-                            type="text"
-                            id="lastName"
-                            name="lastName"
-                            required
-                            className="w-full rounded-xl border border-gray-200 bg-white/80 px-4 py-3 text-gray-800 transition-all duration-300 focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/50"
-                            placeholder="Enter your last name"
-                          />
-                        </div>
-                      </div>
+                {/*
+                  ⬇️ Keep the rest of your existing form fields here
+                  (email/phone/org/title/selects/message/upload/consent/submit)
+                */}
 
                       {/* Contact Information */}
                       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
