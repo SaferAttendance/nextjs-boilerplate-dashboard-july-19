@@ -1,9 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
+
+/** Shape returned by your Xano endpoint */
+type AdminCheckResponse = {
+  isAdmin: boolean;
+  districtCode: string | null;
+  schoolCode: string | null;
+  email: string | null;
+  fullName?: string | null;
+  fullname?: string | null; // some responses use "fullname"
+};
+
+/** Call Xano (or your proxy route) to verify admin + get scope fields */
+async function checkAdmin(email: string): Promise<AdminCheckResponse> {
+  const base =
+    process.env.NEXT_PUBLIC_XANO_ADMIN_CHECK_URL ??
+    '/api/admin/check'; // add a route handler to proxy if you prefer
+  const url = `${base}?email=${encodeURIComponent(email)}`;
+
+  const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+  if (!res.ok) throw new Error(`Admin check failed (${res.status})`);
+  const data = (await res.json()) as AdminCheckResponse;
+
+  // Normalize full name key
+  if (!('fullName' in data) && 'fullname' in data) {
+    (data as any).fullName = (data as any).fullname;
+  }
+  return data;
+}
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -13,45 +41,88 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (error) setError('');
-  };
+  }, [error]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
+    const email = formData.email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setIsLoading(false);
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     try {
-      // 1) Firebase sign in
+      // 0) Verify admin + get scope (districtCode, schoolCode, fullName, email)
+      let adminProfile: AdminCheckResponse | null = null;
+      try {
+        adminProfile = await checkAdmin(email);
+      } catch (e) {
+        console.warn('Admin check request failed:', e);
+        throw new Error('Unable to verify your admin status. Please try again.');
+      }
+
+      if (!adminProfile) {
+        throw new Error('Unable to verify your admin status. Please try again.');
+      }
+
+      if (!adminProfile.email) {
+        // not found in Xano
+        throw new Error(
+          "We couldn't find this email in our system. Please check for typos or contact your district admin."
+        );
+      }
+
+      if (!adminProfile.isAdmin) {
+        // found but not an admin
+        throw new Error(
+          'Your account is verified but does not have administrator permissions. Please contact your district admin.'
+        );
+      }
+
+      // 1) Firebase sign in (we do this only after confirming admin)
       const userCredential = await signInWithEmailAndPassword(
         auth,
-        formData.email,
+        email,
         formData.password
       );
 
-      // 2) Create httpOnly session cookie
+      // 2) Create httpOnly session cookie on the server
       const idToken = await userCredential.user.getIdToken();
       const sessionRes = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken, rememberMe }),
       });
-      if (!sessionRes.ok) throw new Error('Failed to create session');
+      if (!sessionRes.ok) throw new Error('Failed to create a secure session.');
 
-      // 3) Hydrate profile cookies from Xano (full_name, district_code, school_code, email)
-      //    This ensures the dashboard/teachers pages have the scope cookies immediately.
+      // 3) (Optional) Hydrate scope cookies immediately so dashboard pages can filter by district/school
       try {
         await fetch('/api/session', { method: 'GET', cache: 'no-store' });
-        // (optional tiny delay to avoid any rare cookie race on fast redirects)
-        // await new Promise((r) => setTimeout(r, 50));
       } catch (e) {
-        console.warn('Session hydrate failed (continuing to dashboard):', e);
+        console.warn('Session hydrate failed (continuing):', e);
       }
 
-      // 4) Go to dashboard
+      // 4) Also stash a client copy (temporary; server is source of truth)
+      const normalizedProfile = {
+        isAdmin: true,
+        districtCode: adminProfile.districtCode ?? null,
+        schoolCode: adminProfile.schoolCode ?? null,
+        email: adminProfile.email ?? email,
+        fullName: adminProfile.fullName ?? null,
+      };
+      try {
+        sessionStorage.setItem('sa_profile', JSON.stringify(normalizedProfile));
+      } catch {}
+
+      // 5) Go to dashboard
       router.push('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
@@ -60,11 +131,11 @@ export default function LoginPage() {
       else if (err?.code === 'auth/invalid-email') setError('Invalid email address.');
       else if (err?.code === 'auth/too-many-requests')
         setError('Too many attempts. Please try again later.');
-      else setError('Login failed. Please try again.');
+      else setError(err?.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [formData.email, formData.password, rememberMe, router]);
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-50">
@@ -72,7 +143,7 @@ export default function LoginPage() {
       <section className="relative hidden lg:flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-brand-light via-brand-blue to-brand-dark" />
         <div className="pointer-events-none absolute -top-24 -left-20 h-96 w-96 rounded-full bg-white/20 blur-3xl animate-pulse" />
-        <div className="pointer-events-none absolute -bottom-24 -right-20 h-[28rem] w-[28rem] rounded-full bg.white/10 blur-3xl animate-pulse [animation-delay:1.5s]" />
+        <div className="pointer-events-none absolute -bottom-24 -right-20 h-[28rem] w-[28rem] rounded-full bg-white/10 blur-3xl animate-pulse [animation-delay:1.5s]" />
         <div className="pointer-events-none absolute top-1/2 left-1/4 h-32 w-32 rounded-full bg-white/10 blur-2xl animate-pulse [animation-duration:2.5s]" />
 
         <div className="relative z-10 w-full max-w-xl px-16 text-white">
@@ -190,7 +261,6 @@ export default function LoginPage() {
                     className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {/* eye toggles omitted for brevity */}
                     {showPassword ? (
                       <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path
                         fillRule="evenodd"
