@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type ChangeEvent, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
@@ -14,14 +14,12 @@ type AdminCheckResponse = {
   fullName: string | null;
 };
 
-/** Call our server route (keeps Xano URL/API key server-side) */
+/** Call our server route via GET (keeps Xano URL/API key server-side) */
 async function checkAdminViaApi(email: string): Promise<AdminCheckResponse> {
-  const res = await fetch('/api/admin/check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store',
-    body: JSON.stringify({ email }),
-  });
+  const res = await fetch(
+    `/api/admin/check?email=${encodeURIComponent(email)}`,
+    { method: 'GET', cache: 'no-store' }
+  );
 
   if (!res.ok) {
     const msg = await res.text().catch(() => '');
@@ -39,13 +37,13 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (error) setError('');
   }, [error]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
