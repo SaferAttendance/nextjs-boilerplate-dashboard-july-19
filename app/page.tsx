@@ -1,275 +1,387 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebaseClient';
+import { useEffect } from 'react';
 
-export default function LoginPage() {
-  const [formData, setFormData] = useState({ email: '', password: '' });
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState('');
+export default function LandingPage() {
   const router = useRouter();
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (error) setError('');
-  };
+  // --- handlers
+  function adminLogin() {
+    // Send admins to the login screen (we'll place it at /admin/login)
+    router.push('/admin/login');
+  }
+  function learnMore() {
+    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+  }
+  function requestDemo() {
+    alert("Demo request submitted! We'll contact you within 24 hours.");
+  }
+  function toggleMobileMenu() {
+    const menu = document.getElementById('mobileMenu');
+    if (menu) menu.classList.toggle('hidden');
+  }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
-
-    try {
-      // 1) Firebase sign in
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
-      );
-
-      // 2) Create httpOnly session cookie
-      const idToken = await userCredential.user.getIdToken();
-      const sessionRes = await fetch('/api/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, rememberMe }),
-      });
-      if (!sessionRes.ok) throw new Error('Failed to create session');
-
-      // 3) Hydrate profile cookies from Xano (full_name, district_code, school_code, email)
-      //    This ensures the dashboard/teachers pages have the scope cookies immediately.
-      try {
-        await fetch('/api/session', { method: 'GET', cache: 'no-store' });
-        // (optional tiny delay to avoid any rare cookie race on fast redirects)
-        // await new Promise((r) => setTimeout(r, 50));
-      } catch (e) {
-        console.warn('Session hydrate failed (continuing to dashboard):', e);
-      }
-
-      // 4) Go to dashboard
-      router.push('/dashboard');
-    } catch (err: any) {
-      console.error('Login error:', err);
-      if (err?.code === 'auth/user-not-found') setError('No account found with this email.');
-      else if (err?.code === 'auth/wrong-password') setError('Incorrect password.');
-      else if (err?.code === 'auth/invalid-email') setError('Invalid email address.');
-      else if (err?.code === 'auth/too-many-requests')
-        setError('Too many attempts. Please try again later.');
-      else setError('Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  useEffect(() => {
+    // Smooth scrolling for in-page anchors
+    const anchors = Array.from(document.querySelectorAll('a[href^="#"]')) as HTMLAnchorElement[];
+    const onClick = (e: Event) => {
+      e.preventDefault();
+      const href = (e.currentTarget as HTMLAnchorElement).getAttribute('href');
+      if (!href) return;
+      const target = document.querySelector(href);
+      if (target) (target as HTMLElement).scrollIntoView({ behavior: 'smooth' });
+    };
+    anchors.forEach(a => a.addEventListener('click', onClick));
+    return () => anchors.forEach(a => a.removeEventListener('click', onClick));
+  }, []);
 
   return (
-    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-50">
-      {/* LEFT — Brand / gradient panel (desktop only) */}
-      <section className="relative hidden lg:flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-light via-brand-blue to-brand-dark" />
-        <div className="pointer-events-none absolute -top-24 -left-20 h-96 w-96 rounded-full bg-white/20 blur-3xl animate-pulse" />
-        <div className="pointer-events-none absolute -bottom-24 -right-20 h-[28rem] w-[28rem] rounded-full bg.white/10 blur-3xl animate-pulse [animation-delay:1.5s]" />
-        <div className="pointer-events-none absolute top-1/2 left-1/4 h-32 w-32 rounded-full bg-white/10 blur-2xl animate-pulse [animation-duration:2.5s]" />
+    <main className="font-montserrat bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
+      {/* Animated Background Elements */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-gradient-to-br from-brand-blue/20 to-brand-light/10 blur-3xl animate-pulse" />
+        <div className="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-gradient-to-tr from-accent-purple/15 to-brand-blue/10 blur-3xl animate-pulse [animation-delay:2s]" />
+        <div className="absolute left-1/4 top-1/3 h-64 w-64 rounded-full bg-gradient-to-r from-accent-emerald/10 to-brand-light/15 blur-2xl animate-pulse [animation-delay:4s]" />
+      </div>
 
-        <div className="relative z-10 w-full max-w-xl px-16 text-white">
-          <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-3xl backdrop-blur-xl bg-white/10 ring-1 ring-white/30 shadow-xl">
-            <svg className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h2 className="text-4xl font-bold tracking-tight drop-shadow-sm">Safer Attendance</h2>
-          <p className="mt-3 text-white/90 leading-relaxed">
-            Ensuring safety one class at a time while promoting attendance through innovative
-            technology.
-          </p>
-          <div className="mt-8 flex items-center gap-6 text-white/80">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm">Secure Login</span>
+      {/* Navigation Header */}
+      <nav className="relative border-b border-white/20 bg-white/80 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-6">
+            {/* Logo and Brand */}
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-dark shadow-lg shadow-brand-blue/25">
+                  <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5-7a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="absolute -right-1 -top-1 h-4 w-4 animate-ping rounded-full bg-accent-emerald" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-800">Safer Attendance</h1>
+                <p className="text-sm text-gray-600">Innovative Safety Technology</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-blue-300 animate-pulse" />
-              <span className="text-sm">Real-time Data</span>
+
+            {/* Navigation Links */}
+            <div className="hidden items-center space-x-8 md:flex">
+              <a href="#features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
+              <a href="#about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
+              <a href="#contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
+              <button onClick={adminLogin} className="rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-6 py-3 font-medium text-white transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-brand-blue/30">
+                Admin Login
+              </button>
+            </div>
+
+            {/* Mobile Menu Button */}
+            <div className="md:hidden">
+              <button onClick={toggleMobileMenu} className="text-gray-600 transition-colors duration-300 hover:text-brand-dark" aria-label="Open menu">
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Menu */}
+          <div id="mobileMenu" className="hidden pb-6 md:hidden">
+            <div className="flex flex-col space-y-4">
+              <a href="#features" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Features</a>
+              <a href="#about" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">About</a>
+              <a href="#contact" className="font-medium text-gray-600 transition-colors duration-300 hover:text-brand-dark">Contact</a>
+              <button onClick={adminLogin} className="w-full rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-6 py-3 font-medium text-white transition-all duration-300 hover:shadow-lg hover:shadow-brand-blue/30">
+                Admin Login
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="relative py-20 lg:py-32">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            {/* Status Badge */}
+            <div className="mb-8 inline-flex items-center rounded-full bg-accent-emerald/10 px-4 py-2 text-sm font-medium text-accent-emerald">
+              <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-accent-emerald" />
+              Innovative Safety Technology
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="mb-8 text-5xl font-bold leading-tight text-gray-800 md:text-7xl">
+              <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Safer</span>
+              <br />
+              Attendance
+            </h1>
+
+            {/* Tagline */}
+            <p className="mb-6 text-2xl font-medium text-gray-600 md:text-3xl">Ensuring safety one class at a time</p>
+
+            {/* Description */}
+            <p className="mx-auto mb-12 max-w-4xl text-xl leading-relaxed text-gray-600">
+              Promoting attendance through innovative technology that prioritizes student safety, streamlines administrative processes, and creates a secure learning environment for educational institutions.
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="flex flex-col items-center justify-center gap-6 sm:flex-row">
+              <button onClick={learnMore} className="flex items-center space-x-3 rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-8 py-4 text-lg font-semibold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-brand-blue/30">
+                <span>Learn More</span>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </button>
+              <button onClick={requestDemo} className="flex items-center space-x-3 rounded-xl border border-white/30 bg-white/70 px-8 py-4 text-lg font-semibold text-gray-700 transition-all duration-300 hover:scale-105 hover:bg-white/90">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Request Demo</span>
+              </button>
             </div>
           </div>
         </div>
       </section>
 
-      {/* RIGHT — Login card */}
-      <section className="flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-md">
-          {/* Mobile brand header */}
-          <div className="lg:hidden text-center mb-8">
-            <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-brand-light to-brand-blue text-white shadow-lg">
-              <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Safer Attendance</h2>
+      {/* Features Section */}
+      <section id="features" className="relative bg-white/30 py-20 backdrop-blur-sm">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-16 text-center">
+            <h2 className="mb-6 text-4xl font-bold text-gray-800 md:text-5xl">
+              Why Choose <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Safer Attendance?</span>
+            </h2>
+            <p className="mx-auto max-w-3xl text-xl text-gray-600">
+              Our innovative platform combines cutting-edge technology with user-friendly design to create the safest attendance tracking solution.
+            </p>
           </div>
 
-          <div className="rounded-3xl bg-white p-8 shadow-2xl ring-1 ring-black/5">
-            <header className="mb-8 text-center">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-              <p className="text-gray-600">Sign in to your admin dashboard</p>
-            </header>
-
-            {error && (
-              <div role="alert" aria-live="polite" className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
-                <div className="flex items-center text-red-700">
-                  <svg className="mr-2 h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  <span className="text-sm">{error}</span>
-                </div>
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+            {/* Safety First */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-accent-emerald/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-emerald to-emerald-600 shadow-lg shadow-accent-emerald/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5-7a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-            )}
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">Safety First</h3>
+              <p className="leading-relaxed text-gray-600">
+                Advanced security protocols ensure student data protection while maintaining real-time safety monitoring across all educational facilities.
+              </p>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Email */}
-              <div>
-                <label htmlFor="email" className="mb-2 block text-sm font-medium text-gray-700">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    disabled={isLoading}
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    placeholder="admin@example.com"
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
-                    aria-invalid={!!error}
-                  />
-                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-                  </svg>
-                </div>
+            {/* Real-Time Tracking */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-brand-blue/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-dark shadow-lg shadow-brand-blue/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
               </div>
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">Real-Time Tracking</h3>
+              <p className="leading-relaxed text-gray-600">
+                Instant attendance updates with live dashboards providing administrators immediate insights into student presence and safety status.
+              </p>
+            </div>
 
-              {/* Password */}
-              <div>
-                <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    required
-                    disabled={isLoading}
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="Enter your password"
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 pr-12 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
-                    aria-invalid={!!error}
-                  />
-                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                  </svg>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((s) => !s)}
-                    disabled={isLoading}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-blue disabled:opacity-50"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {/* eye toggles omitted for brevity */}
-                    {showPassword ? (
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path
-                        fillRule="evenodd"
-                        d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
-                        clipRule="evenodd" /><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" /></svg>
-                    ) : (
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path
-                        fillRule="evenodd"
-                        d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                        clipRule="evenodd" /></svg>
-                    )}
-                  </button>
-                </div>
+            {/* Smart Analytics */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-accent-purple/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-purple to-purple-600 shadow-lg shadow-accent-purple/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
               </div>
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">Smart Analytics</h3>
+              <p className="leading-relaxed text-gray-600">
+                Comprehensive reporting and predictive analytics help identify attendance patterns and potential safety concerns before they escalate.
+              </p>
+            </div>
 
-              {/* Remember / Forgot */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    disabled={isLoading}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-blue focus:ring-brand-blue/20"
-                  />
-                  <span className="ml-2 text-sm text-gray-600">Remember me</span>
-                </label>
-                <button
-                  type="button"
-                  disabled={isLoading}
-                  className="text-sm text-brand-blue hover:text-brand-dark transition-colors disabled:opacity-50"
-                >
-                  Forgot password?
-                </button>
+            {/* Easy Integration */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-accent-orange/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-accent-orange to-orange-600 shadow-lg shadow-accent-orange/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4 4 0 00-6.364 0z" />
+                </svg>
               </div>
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">Easy Integration</h3>
+              <p className="leading-relaxed text-gray-600">
+                Seamlessly integrates with existing school management systems, requiring minimal setup while maximizing functionality and user adoption.
+              </p>
+            </div>
 
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={isLoading || !formData.email || !formData.password}
-                className="w-full rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark px-4 py-3 font-medium text-white shadow-lg transition hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isLoading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Signing In…
-                  </span>
-                ) : (
-                  'Sign In'
-                )}
-              </button>
-            </form>
+            {/* 24/7 Support */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-rose-400/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-pink-500 shadow-lg shadow-rose-400/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192L5.636 18.364M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">24/7 Support</h3>
+              <p className="leading-relaxed text-gray-600">
+                Round-the-clock technical support and monitoring ensure your attendance system operates smoothly without interruption.
+              </p>
+            </div>
 
-            {/* Footer */}
-            <div className="mt-8 text-center">
-              <p className="text-sm text-gray-500">
-                Need help?{' '}
-                <button className="text-brand-blue hover:text-brand-dark transition-colors">
-                  Contact Support
-                </button>
+            {/* Compliance Ready */}
+            <div className="group rounded-2xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl transition-all duration-500 hover:-translate-y-2 hover:shadow-xl hover:shadow-indigo-400/20">
+              <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-lg shadow-indigo-400/25 transition-transform duration-300 group-hover:scale-110">
+                <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              </div>
+              <h3 className="mb-4 text-2xl font-semibold text-gray-800">Compliance Ready</h3>
+              <p className="leading-relaxed text-gray-600">
+                Built to meet educational compliance standards and privacy regulations, ensuring your institution stays protected and compliant.
               </p>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Security note */}
-          <div className="mt-6 text-center">
-            <div className="inline-flex items-center gap-2 text-sm text-gray-500">
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span>Secured with enterprise-grade encryption</span>
+      {/* About Section */}
+      <section id="about" className="relative py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 items-center gap-16 lg:grid-cols-2">
+            <div>
+              <h2 className="mb-8 text-4xl font-bold text-gray-800 md:text-5xl">
+                Revolutionizing <span className="bg-gradient-to-r from-brand-blue to-brand-dark bg-clip-text text-transparent">Educational Safety</span>
+              </h2>
+              <p className="mb-8 text-xl leading-relaxed text-gray-600">
+                Safer Attendance was born from the need to create a comprehensive solution that doesn't just track attendance, but ensures every student's safety and well-being throughout their educational journey.
+              </p>
+              <div className="space-y-6">
+                <div className="flex items-start space-x-4">
+                  <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent-emerald to-emerald-600">
+                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold text-gray-800">Innovative Technology</h3>
+                    <p className="text-gray-600">Cutting-edge solutions designed specifically for educational environments.</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-4">
+                  <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-blue to-brand-dark">
+                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold text-gray-800">Safety Focused</h3>
+                    <p className="text-gray-600">Every feature is built with student safety and security as the top priority.</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-4">
+                  <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent-purple to-purple-600">
+                    <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-lg font-semibold text-gray-800">User-Friendly</h3>
+                    <p className="text-gray-600">Intuitive design that makes complex attendance management simple and efficient.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative">
+              <div className="rounded-3xl border border-white/20 bg-gradient-to-br from-brand-blue/20 to-brand-dark/10 p-8 backdrop-blur-sm">
+                <div className="rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+                  <div className="text-center">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-blue to-brand-dark shadow-lg shadow-brand-blue/25">
+                      <svg className="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <h3 className="mb-4 text-2xl font-bold text-gray-800">Trusted by 500+ Schools</h3>
+                    <p className="mb-6 text-gray-600">Educational institutions worldwide trust Safer Attendance to protect their students.</p>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-2xl font-bold text-brand-dark">99.9%</p>
+                        <p className="text-sm text-gray-600">Uptime</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-brand-dark">500K+</p>
+                        <p className="text-sm text-gray-600">Students</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-brand-dark">24/7</p>
+                        <p className="text-sm text-gray-600">Support</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* CTA Section */}
+      <section className="relative bg-gradient-to-r from-brand-blue to-brand-dark py-20">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <h2 className="mb-8 text-4xl font-bold text-white md:text-5xl">Ready to Make Your School Safer?</h2>
+          <p className="mx-auto mb-12 max-w-3xl text-xl text-blue-100">
+            Join hundreds of educational institutions that have already transformed their attendance tracking with our innovative safety-first approach.
+          </p>
+          <div className="flex flex-col items-center justify-center gap-6 sm:flex-row">
+            <button onClick={requestDemo} className="flex items-center space-x-3 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-brand-dark transition-all duration-300 hover:scale-105 hover:bg-gray-50 shadow-lg">
+              <span>Get Started Today</span>
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </button>
+            <button onClick={adminLogin} className="rounded-xl border border-white/30 bg-white/20 px-8 py-4 text-lg font-semibold text-white backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/30">
+              Admin Access
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer id="contact" className="relative bg-gray-900 py-16 text-white">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
+            <div className="col-span-1 md:col-span-2">
+              <div className="mb-6 flex items-center space-x-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-dark">
+                  <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5-7a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">Safer Attendance</h3>
+                  <p className="text-gray-400">Ensuring safety one class at a time</p>
+                </div>
+              </div>
+              <p className="mb-6 max-w-md text-gray-400">
+                Innovative attendance tracking technology designed to prioritize student safety while streamlining administrative processes.
+              </p>
+            </div>
+            <div>
+              <h4 className="mb-4 text-lg font-semibold">Quick Links</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li><a href="#features" className="transition-colors duration-300 hover:text-white">Features</a></li>
+                <li><a href="#about" className="transition-colors duration-300 hover:text-white">About</a></li>
+                <li><a href="#" className="transition-colors duration-300 hover:text-white">Privacy Policy</a></li>
+                <li><a href="#" className="transition-colors duration-300 hover:text-white">Terms of Service</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="mb-4 text-lg font-semibold">Contact</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li>support@saferattendance.com</li>
+                <li>1-800-SAFER-01</li>
+                <li>24/7 Support Available</li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-12 border-t border-gray-800 pt-8 text-center text-gray-400">
+            <p>&copy; 2024 Safer Attendance. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
