@@ -4,17 +4,14 @@ import { redirect } from 'next/navigation';
 
 const SESSION_COOKIE_NAMES = ['sa_session', '__session', 'session']; // adjust to your actual cookie name(s)
 
-export default async function DashboardPage() {
-  // Next 15: cookies() is async
-  const jar = await cookies();
+export default function DashboardPage() {
+  const jar = cookies(); // ✅ FIXED: no longer async
 
-  // If none of these cookies exist, treat as unauthenticated and redirect.
   const hasSession = SESSION_COOKIE_NAMES.some((n) => !!jar.get(n)?.value);
   if (!hasSession) {
     redirect('/admin/login');
   }
 
-  // Optional: read any profile/scope cookies your /api/session GET populated
   const fullName     = jar.get('full_name')?.value ?? null;
   const email        = jar.get('email')?.value ?? null;
   const districtCode = jar.get('district_code')?.value ?? null;
@@ -50,7 +47,6 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Your real dashboard content goes here */}
       <section className="mt-8">
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="text-xl font-semibold mb-2">Overview</h2>
