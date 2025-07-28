@@ -1,7 +1,7 @@
-// app/dashboard/page.tsx
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import LogoutButton from '@/components/LogoutButton';
 
 export const runtime = 'nodejs'; // firebase-admin needs Node runtime
 
@@ -9,16 +9,16 @@ type XanoAdmin = {
   full_name?: string;
   name?: string;
   school_id?: string | number;
-  // add other fields you plan to use later
 };
 
 export default async function DashboardPage() {
   // ---- Require valid session
   const jar = await cookies(); // Next 15: cookies() is async
+
   // Support either cookie name based on your recent changes
   const rawToken =
-    jar.get('token')?.value ?? // old name
-    jar.get('sa_session')?.value; // new name
+    jar.get('token')?.value ??        // old name
+    jar.get('sa_session')?.value;     // new name
 
   if (!rawToken) {
     redirect('/admin/login');
@@ -35,37 +35,36 @@ export default async function DashboardPage() {
     redirect('/admin/login');
   }
 
-  // ---- Fetch admin profile from Xano (for greeting and any attributes)
-  let fullName = 'Admin';
-  let schoolId: string | number | undefined;
+  // ---- Resolve the user's name (prefer cookie that /api/session GET sets)
+  let fullName =
+    jar.get('full_name')?.value || // populated by /api/session GET
+    'Admin';
 
-  try {
-    // Prefer explicit full endpoint if provided, otherwise build from base
-    const adminCheckUrl =
-      process.env.XANO_ADMIN_CHECK_URL ||
-      process.env.NEXT_PUBLIC_XANO_ADMIN_CHECK_URL ||
-      `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
-        .replace(/\/$/, '')}/admin_dashboard_checkAdmin`;
+  // If cookie not present, fetch from Xano for a nicer greeting
+  if (!jar.get('full_name')?.value) {
+    try {
+      const adminCheckUrl =
+        process.env.XANO_ADMIN_CHECK_URL ||
+        process.env.NEXT_PUBLIC_XANO_ADMIN_CHECK_URL ||
+        `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+          .replace(/\/$/, '')}/admin_dashboard_checkAdmin`;
 
-    const url = `${adminCheckUrl}?email=${encodeURIComponent(email!)}`;
+      const url = `${adminCheckUrl}?email=${encodeURIComponent(email!)}`;
 
-    const headers: HeadersInit = {
-      Accept: 'application/json',
-    };
-    if (process.env.XANO_API_KEY) {
-      headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
+      const headers: HeadersInit = { Accept: 'application/json' };
+      if (process.env.XANO_API_KEY) {
+        headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
+      }
+
+      const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
+      if (res.ok) {
+        const payload = await res.json();
+        const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
+        fullName = (record?.full_name || record?.name || fullName).toString();
+      }
+    } catch {
+      // Non-fatal; continue with fallback "Admin"
     }
-
-    const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
-    if (res.ok) {
-      const payload = await res.json();
-      const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
-
-      fullName = (record?.full_name || record?.name || fullName).toString();
-      schoolId = record?.school_id;
-    }
-  } catch {
-    // Non-fatal; the dashboard can still render without the name.
   }
 
   return (
@@ -87,14 +86,15 @@ export default async function DashboardPage() {
             <h1 className="text-lg font-semibold text-gray-900">Safer Attendance Dashboard</h1>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center space-x-2">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">System Online</span>
             </div>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
               {fullName?.[0]?.toUpperCase() || 'A'}
             </div>
+            <LogoutButton />
           </div>
         </div>
       </header>
@@ -102,7 +102,9 @@ export default async function DashboardPage() {
       {/* Welcome */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h2 className="mb-2 text-3xl font-bold text-gray-900">Welcome back, {fullName}</h2>
+          <h2 className="mb-2 text-3xl font-bold text-gray-900">
+            Welcome back, {fullName}
+          </h2>
           <p className="text-gray-600">Choose a quick action to get started.</p>
         </div>
       </section>
