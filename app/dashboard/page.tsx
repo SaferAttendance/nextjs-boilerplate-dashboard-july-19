@@ -7,24 +7,21 @@ export const runtime = 'nodejs'; // firebase-admin needs Node runtime
 
 type XanoAdmin = {
   full_name?: string;
+  fullname?: string;
+  fullName?: string;
   name?: string;
   school_id?: string | number;
 };
 
 export default async function DashboardPage() {
-  // ---- Require valid session
-  const jar = await cookies(); // Next 15: cookies() is async
+  const jar = await cookies();
 
-  // Support either cookie name based on your recent changes
   const rawToken =
-    jar.get('token')?.value ??        // old name
-    jar.get('sa_session')?.value;     // new name
+    jar.get('token')?.value ??
+    jar.get('sa_session')?.value;
+  if (!rawToken) redirect('/admin/login');
 
-  if (!rawToken) {
-    redirect('/admin/login');
-  }
-
-  // ---- Verify Firebase token and extract email
+  // Verify token & get email
   let email: string | undefined;
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin');
@@ -35,13 +32,14 @@ export default async function DashboardPage() {
     redirect('/admin/login');
   }
 
-  // ---- Resolve the user's name (prefer cookie that /api/session GET sets)
+  // Prefer the cookie set by /api/session GET
   let fullName =
-    jar.get('fullname')?.value || // populated by /api/session GET
+    jar.get('full_name')?.value ||
+    jar.get('fullname')?.value ||
     'Admin';
 
-  // If cookie not present, fetch from Xano for a nicer greeting
-  if (!jar.get('fullname')?.value) {
+  // If not present, fetch once from Xano to populate the greeting
+  if (!jar.get('full_name')?.value && !jar.get('fullname')?.value) {
     try {
       const adminCheckUrl =
         process.env.XANO_ADMIN_CHECK_URL ||
@@ -60,10 +58,16 @@ export default async function DashboardPage() {
       if (res.ok) {
         const payload = await res.json();
         const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
-        fullName = (record?.full_name || record?.name || fullName).toString();
+        fullName = String(
+          record?.full_name ||
+          record?.fullname ||
+          record?.fullName ||
+          record?.name ||
+          fullName
+        );
       }
     } catch {
-      // Non-fatal; continue with fallback "Admin"
+      // Not fatal
     }
   }
 
