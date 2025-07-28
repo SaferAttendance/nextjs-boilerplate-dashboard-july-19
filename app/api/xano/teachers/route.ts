@@ -10,7 +10,7 @@ function teachersEndpoint() {
   return `${base.replace(/\/$/, '')}/admin_search_teachers`;
 }
 
-// normalize cookie reads across runtimes/types
+// Normalize cookie reads across runtimes/types
 function readCookie(req: NextRequest, name: string): string | undefined {
   const c: any = req.cookies.get(name);
   return typeof c === 'string' ? c : c?.value;
@@ -48,7 +48,11 @@ export async function GET(req: NextRequest) {
     url.searchParams.set('teacher_name', q);
   }
 
-  if (email) url.searchParams.set('email', email); // optional, if your flow uses it
+  // some Xano flows prefer / log admin context
+  if (email) {
+    url.searchParams.set('email', email);
+    url.searchParams.set('admin_email', email);
+  }
 
   const headers: HeadersInit = {};
   if (process.env.XANO_API_KEY) {
