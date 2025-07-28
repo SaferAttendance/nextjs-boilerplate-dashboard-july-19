@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 
 /* ---------- Types ---------- */
-{/*test*/}
+// test
 
 // Rows returned by /api/xano/teachers (backed by your Xano teachers search)
 type XanoTeacherRow = {
@@ -60,6 +60,15 @@ const cardGradientColors = [
   'from-orange-400 to-orange-600',
   'from-pink-400 to-pink-600',
 ];
+
+// Map attendance status -> pill colors
+function statusPillClasses(status?: string) {
+  const s = (status || '').toString().trim().toLowerCase();
+  if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
+  if (s === 'absent')  return 'bg-red-100 text-red-800 ring-1 ring-red-200';
+  // default + "pending"
+  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
+}
 
 /* ---------- Component ---------- */
 
@@ -519,8 +528,10 @@ export default function TeachersSearch() {
                                 {row.student_id ?? '—'}
                               </td>
                               <td className="px-6 py-3 text-sm">
-                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
-                                  {row.attendance_status || '—'}
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(row.attendance_status)}`}
+                                >
+                                  {row.attendance_status || 'Pending'}
                                 </span>
                               </td>
                             </tr>
