@@ -1,13 +1,15 @@
-// app/dashboard/page.tsx
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-const SESSION_COOKIE_NAMES = ['sa_session', '__session', 'session']; // adjust to your actual cookie name(s)
+const SESSION_COOKIE_NAMES = ['sa_session', '__session', 'session'];
 
-export default function DashboardPage() {
-  const jar = cookies(); // ✅ FIXED: no longer async
+export default async function DashboardPage() {
+  const jar = await cookies(); // ✅ properly await
 
-  const hasSession = SESSION_COOKIE_NAMES.some((n) => !!jar.get(n)?.value);
+  const hasSession = SESSION_COOKIE_NAMES.some(
+    (n) => !!jar.get(n)?.value
+  );
+
   if (!hasSession) {
     redirect('/admin/login');
   }
