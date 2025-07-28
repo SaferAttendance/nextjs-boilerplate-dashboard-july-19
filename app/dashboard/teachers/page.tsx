@@ -7,7 +7,7 @@ export default async function TeachersPage() {
   const jar = await cookies();
   const token = jar.get('token')?.value;
   if (!token) redirect('/');
-
+  {/* test */}
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin');
     await getAdminAuth().verifyIdToken(token);
