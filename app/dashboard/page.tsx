@@ -37,11 +37,11 @@ export default async function DashboardPage() {
 
   // ---- Resolve the user's name (prefer cookie that /api/session GET sets)
   let fullName =
-    jar.get('full_name')?.value || // populated by /api/session GET
+    jar.get('fullname')?.value || // populated by /api/session GET
     'Admin';
 
   // If cookie not present, fetch from Xano for a nicer greeting
-  if (!jar.get('full_name')?.value) {
+  if (!jar.get('fullname')?.value) {
     try {
       const adminCheckUrl =
         process.env.XANO_ADMIN_CHECK_URL ||
