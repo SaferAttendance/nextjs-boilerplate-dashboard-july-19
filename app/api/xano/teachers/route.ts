@@ -1,6 +1,6 @@
 // app/api/xano/teachers/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-
+{/* test */}
 export const runtime = 'nodejs';
 
 function teachersEndpoint() {
