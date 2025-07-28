@@ -6,6 +6,13 @@ export const runtime = 'nodejs';
 
 type Body = { idToken: string; rememberMe?: boolean };
 
+function firstString(...vals: any[]): string {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim().length > 0) return v;
+  }
+  return '';
+}
+
 // ---- POST: create session cookie
 export async function POST(request: NextRequest) {
   try {
@@ -16,19 +23,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email not verified' }, { status: 403 });
     }
 
-    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4; // 30d or 4h
+    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 4;
     const res = NextResponse.json({ success: true });
 
-    // ✅ Use a consistent cookie name for the session
-    res.cookies.set('sa_session', idToken, {
+    // httpOnly session token
+    res.cookies.set('token', idToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      path: '/',                    // <— critical so /dashboard can read it
+      path: '/',
       maxAge,
     });
 
-    // (Optional convenience cookie for email; non-HttpOnly)
+    // convenience email cookie (non-httpOnly)
     if (decoded.email) {
       res.cookies.set('email', decoded.email, {
         httpOnly: false,
@@ -49,46 +56,57 @@ export async function POST(request: NextRequest) {
 // ---- GET: hydrate profile cookies from Xano
 export async function GET(request: NextRequest) {
   try {
-    // Read the new name, fall back to the old name if present (for compat)
-    const token =
-      request.cookies.get('sa_session')?.value ||
-      request.cookies.get('token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'No session' }, { status: 401 });
-    }
+    const token = request.cookies.get('token')?.value;
+    if (!token) return NextResponse.json({ error: 'No session' }, { status: 401 });
 
     const decoded = await getAdminAuth().verifyIdToken(token);
     const email = decoded.email || request.cookies.get('email')?.value;
     if (!email) return NextResponse.json({ error: 'No email' }, { status: 400 });
 
-    // Build admin check URL
+    // Build admin check URL (group with admin_dashboard_checkAdmin)
     const adminCheck =
       process.env.XANO_ADMIN_CHECK_URL ||
-      `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '').replace(/\/$/, '')}/admin_dashboard_checkAdmin`;
+      `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+        .replace(/\/$/, '')}/admin_dashboard_checkAdmin`;
 
     const url = new URL(adminCheck);
     url.searchParams.set('email', email);
-    url.searchParams.set('admin_email', email);
+    url.searchParams.set('admin_email', email); // try both if Xano expects this
 
-    const headers: HeadersInit = {};
+    const headers: HeadersInit = { Accept: 'application/json' };
     if (process.env.XANO_API_KEY) {
       headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
     }
 
     const r = await fetch(url.toString(), { headers, cache: 'no-store' });
     if (!r.ok) {
-      const out = await r.text().catch(() => '');
+      const out = await r.text();
       console.warn('Xano admin check failed:', r.status, out);
       return NextResponse.json({ error: 'Admin check failed' }, { status: 502 });
     }
 
-    const data = await r.json();
+    const payload = await r.json();
+    const data = Array.isArray(payload) ? payload[0] ?? {} : payload ?? {};
 
-    // Adjust keys to your Xano shape
-    const full_name = data.full_name || data.fullName || data.name || '';
-    const district_code = data.district_code || data.districtCode || data.district || '';
-    const school_code = data.school_code || data.schoolCode || data.school || '';
+    // 🔑 Normalize multiple possible key names from Xano
+    const full_name = firstString(
+      data.full_name,
+      data.fullname,
+      data.fullName,
+      data.name
+    );
+    const district_code = firstString(
+      data.district_code,
+      data.districtCode,
+      data.districtcode,
+      data.district
+    );
+    const school_code = firstString(
+      data.school_code,
+      data.schoolCode,
+      data.schoolcode,
+      data.school
+    );
 
     const res = NextResponse.json({
       success: true,
@@ -104,6 +122,9 @@ export async function GET(request: NextRequest) {
     };
 
     if (full_name) res.cookies.set('full_name', full_name, cookieOpts);
+    // (optional) also set a 'fullname' cookie for legacy readers:
+    if (full_name) res.cookies.set('fullname', full_name, cookieOpts);
+
     if (district_code) res.cookies.set('district_code', district_code, cookieOpts);
     if (school_code) res.cookies.set('school_code', school_code, cookieOpts);
     res.cookies.set('email', email, cookieOpts);
@@ -118,28 +139,14 @@ export async function GET(request: NextRequest) {
 // ---- DELETE: clear session
 export async function DELETE() {
   const res = NextResponse.json({ success: true });
-
-  // Clear new and legacy cookie names for safety
-  ['sa_session', 'token'].forEach((name) => {
-    res.cookies.set(name, '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-    });
-  });
-
-  // clear profile cookies
-  ['full_name', 'district_code', 'school_code', 'email'].forEach((k) =>
-    res.cookies.set(k, '', {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-    }),
+  const base = {
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+  res.cookies.set('token', '', { ...base, httpOnly: true, maxAge: 0 });
+  ['full_name', 'fullname', 'district_code', 'school_code', 'email'].forEach((k) =>
+    res.cookies.set(k, '', { ...base, httpOnly: false, maxAge: 0 }),
   );
-
   return res;
 }
