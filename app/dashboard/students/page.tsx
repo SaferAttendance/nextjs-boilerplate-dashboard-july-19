@@ -51,7 +51,7 @@ export default async function StudentsPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">Search Students</h1>
-                <p className="text-sm text-gray-600">Find teacher profiles and class information</p>
+                <p className="text-sm text-gray-600">Find student profiles and attendance information</p>
               </div>
             </div>
 
