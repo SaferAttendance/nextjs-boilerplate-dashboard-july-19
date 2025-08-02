@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import TeachersSearch from './TeachersSearch';
+import StudentsSearch from './StudentsSearch';
 
-export default async function TeachersPage() {
+export default async function StudentsPage() {
   const jar = await cookies();
   const token = jar.get('token')?.value;
   if (!token) redirect('/');
@@ -50,7 +50,7 @@ export default async function TeachersPage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-800">Search Teachers</h1>
+                <h1 className="text-xl font-bold text-gray-800">Search Students</h1>
                 <p className="text-sm text-gray-600">Find teacher profiles and class information</p>
               </div>
             </div>
@@ -69,7 +69,7 @@ export default async function TeachersPage() {
 
       {/* Content */}
       <main className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 z-10">
-        <TeachersSearch />
+        <StudentsSearch />
       </main>
     </main>
   );
