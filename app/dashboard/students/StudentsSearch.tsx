@@ -237,7 +237,7 @@ export default function StudentsSearch() {
     <>
       {/* Search Section */}
       <div className="text-center mb-12">
-        <h2 className="text-4xl font-bold text-gray-800 mb-4">Find a Teacher</h2>
+        <h2 className="text-4xl font-bold text-gray-800 mb-4">Find a Student</h2>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-8">
           Search by student name or Student ID to view their class schedules and attendance information.
         </p>
