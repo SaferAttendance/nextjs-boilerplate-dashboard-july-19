@@ -151,7 +151,7 @@ export default function StudentsSearch() {
 
     const q = query.trim();
     if (!q) {
-      alert('Please enter a teacher name or email address');
+      alert('Please enter a student name or Student ID');
       return;
     }
 
@@ -239,7 +239,7 @@ export default function StudentsSearch() {
       <div className="text-center mb-12">
         <h2 className="text-4xl font-bold text-gray-800 mb-4">Find a Teacher</h2>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-8">
-          Search by teacher name or email address to view their class schedules and attendance information.
+          Search by student name or Student ID to view their class schedules and attendance information.
         </p>
 
         {/* Search Bar */}
@@ -248,7 +248,7 @@ export default function StudentsSearch() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Enter teacher name or email address..."
+                placeholder="Enter student name or Student ID..."
                 className="w-full px-6 py-4 bg-white/90 backdrop-blur-sm border border-white/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent transition-all duration-200 pl-14 pr-16 text-lg shadow-lg"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -259,7 +259,7 @@ export default function StudentsSearch() {
                 }}
                 onBlur={(e) =>
                   (e.target.placeholder =
-                    'Enter teacher name or email address...')
+                    'Enter student name or Student ID...')
                 }
               />
               <svg
@@ -296,7 +296,7 @@ export default function StudentsSearch() {
       {loading && (
         <div className="text-center py-16" data-testid="loading-state">
           <div className="w-12 h-12 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Searching for teacher...</p>
+          <p className="text-gray-600 font-medium">Searching for student...</p>
         </div>
       )}
 
@@ -308,9 +308,9 @@ export default function StudentsSearch() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">No Teacher Found</h3>
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">No Student Found</h3>
           <p className="text-gray-600 max-w-md mx-auto">
-            We couldn't find a teacher with that name or email address. Please check your spelling and try again.
+            We couldn't find a student with that name or Student ID. Please check your spelling and try again.
           </p>
         </div>
       )}
