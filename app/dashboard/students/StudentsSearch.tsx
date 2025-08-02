@@ -255,7 +255,7 @@ export default function StudentsSearch() {
                 onFocus={(e) => {
                   if (!e.target.value)
                     e.target.placeholder =
-                      'Try: Sarah Johnson, john@school.edu, or Mike Davis';
+                      'Try: John Smith, or ######';
                 }}
                 onBlur={(e) =>
                   (e.target.placeholder =
