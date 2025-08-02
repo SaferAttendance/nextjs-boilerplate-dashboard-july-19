@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 /* ---------- Types ---------- */
 // test
 
-// Rows returned by /api/xano/teachers (backed by your Xano teachers search)
+// Rows returned by /api/xano/Students (backed by your Xano Students search)
 type XanoTeacherRow = {
   id: number;
   teacher_name?: string;
@@ -72,7 +72,7 @@ function statusPillClasses(status?: string) {
 
 /* ---------- Component ---------- */
 
-export default function TeachersSearch() {
+export default function StudentsSearch() {
   // Search & results
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -157,7 +157,7 @@ export default function TeachersSearch() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/xano/teachers?q=${encodeURIComponent(q)}`, {
+      const res = await fetch(`/api/xano/Students?q=${encodeURIComponent(q)}`, {
         method: 'GET',
         cache: 'no-store',
       });
