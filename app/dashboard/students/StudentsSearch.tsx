@@ -72,7 +72,7 @@ export default function StudentsSearch() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/xano/students?q=${encodeURIComponent(q)}`, {
+      const res = await fetch(`/api/xano/student?q=${encodeURIComponent(q)}`, {
         method: 'GET',
         cache: 'no-store',
       });
