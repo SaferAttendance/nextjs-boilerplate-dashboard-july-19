@@ -36,12 +36,11 @@ const cardGradientColors = [
   'from-pink-400 to-pink-600',
 ];
 
-// Map attendance status -> pill colors
 function statusPillClasses(status?: string) {
   const s = (status || '').toString().trim().toLowerCase();
   if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
   if (s === 'absent')  return 'bg-red-100 text-red-800 ring-1 ring-red-200';
-  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200'; // pending / unknown
+  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
 }
 
 /* ---------- Component ---------- */
@@ -61,7 +60,7 @@ export default function StudentsSearch() {
   const [classesError, setClassesError] = useState<string | null>(null);
   const [classes, setClasses] = useState<StudentClassRow[] | null>(null);
 
-  // Modal for a selected class (details)
+  // Modal for a selected class
   const [modalClass, setModalClass] = useState<StudentClassRow | null>(null);
 
   /* ---------- Actions ---------- */
@@ -84,23 +83,24 @@ export default function StudentsSearch() {
 
     setLoading(true);
     try {
-      // Proxy route you will add: /api/xano/students?q=...
       const res = await fetch(`/api/xano/students?q=${encodeURIComponent(q)}`, {
         method: 'GET',
         cache: 'no-store',
       });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Search failed (${res.status})`);
 
-      const rows: StudentMatch[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      // Better error message if a non-JSON response comes back
+      const ct = res.headers.get('content-type') || '';
+      const payload = ct.includes('application/json') ? await res.json() : await res.text();
+
+      if (!res.ok) throw new Error((payload as any)?.error || String(payload) || `Search failed (${res.status})`);
+
+      const rows: StudentMatch[] = Array.isArray(payload) ? (payload as any) : (payload as any)?.records ?? [];
       if (!rows || rows.length === 0) {
         setNoResults(true);
         return;
       }
 
       setMatches(rows);
-
-      // If only one match, auto-select and load classes
       if (rows.length === 1) {
         await selectStudent(rows[0]);
       }
@@ -122,15 +122,16 @@ export default function StudentsSearch() {
 
     setClassesLoading(true);
     try {
-      // Proxy route you will add: /api/xano/student-classes?student_id=...
       const url = `/api/xano/student-classes?student_id=${encodeURIComponent(String(s.student_id ?? ''))}`;
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      let items: StudentClassRow[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      const ct = res.headers.get('content-type') || '';
+      const payload = ct.includes('application/json') ? await res.json() : await res.text();
 
-      // Normalize student fields onto each row (useful for modal)
+      if (!res.ok) throw new Error((payload as any)?.error || String(payload) || `Failed (${res.status})`);
+
+      let items: StudentClassRow[] = Array.isArray(payload) ? (payload as any) : (payload as any)?.records ?? [];
+
       items = items.map(r => ({
         ...r,
         student_id: r.student_id ?? s.student_id,
@@ -171,17 +172,11 @@ export default function StudentsSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={(e) => {
-                  if (!e.target.value)
-                    e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
+                  if (!e.target.value) e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
                 }}
                 onBlur={(e) => (e.target.placeholder = 'Enter student name or ID...')}
               />
-              <svg
-                className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <button
@@ -193,11 +188,11 @@ export default function StudentsSearch() {
             </div>
           </form>
 
-          {searchError && (
-            <p className="mt-3 text-sm text-red-600" role="alert">
-              {searchError}
-            </p>
-          )}
+            {searchError && (
+              <p className="mt-3 text-sm text-red-600" role="alert">
+                {searchError}
+              </p>
+            )}
         </div>
       </div>
 
@@ -262,9 +257,7 @@ export default function StudentsSearch() {
               <div>
                 <div className="text-xl font-bold text-gray-900">{selected.student_name || 'Student'}</div>
                 <div className="text-sm text-gray-600">ID: {selected.student_id ?? '—'}</div>
-                {selected.parent_email && (
-                  <div className="text-sm text-gray-500">Parent: {selected.parent_email}</div>
-                )}
+                {selected.parent_email && <div className="text-sm text-gray-500">Parent: {selected.parent_email}</div>}
               </div>
             </div>
             <div className="text-right text-sm text-gray-600">
@@ -405,8 +398,6 @@ export default function StudentsSearch() {
                   <p className="font-semibold text-gray-800">{modalClass.student_id ?? selected?.student_id ?? '—'}</p>
                 </div>
               </div>
-
-              {/* (Optional) Additional actions go here */}
             </div>
           </div>
         </div>
