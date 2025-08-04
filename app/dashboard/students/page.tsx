@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import StudentsSearch from './StudentsSearch';
 
-export const runtime = 'nodejs'; // firebase-admin needs Node
+export const runtime = 'nodejs';
 
 export default async function StudentsPage() {
   const jar = await cookies();
