@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import StudentsSearch from './StudentsSearch';
 
-export const runtime = 'nodejs'; // ensure Node (firebase-admin)
+export const runtime = 'nodejs'; // firebase-admin needs Node
 
 export default async function StudentsPage() {
   const jar = await cookies();
@@ -20,7 +20,7 @@ export default async function StudentsPage() {
 
   const fullName =
     jar.get('full_name')?.value ??
-    jar.get('fullname')?.value ?? // fallback if only "fullname" is set
+    jar.get('fullname')?.value ??
     'Admin';
 
   return (
