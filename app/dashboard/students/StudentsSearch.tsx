@@ -2,8 +2,6 @@
 
 import React, { useState } from 'react';
 
-/* ---------- Types (align with your Xano payloads) ---------- */
-
 type StudentMatch = {
   student_id: string | number;
   student_name?: string;
@@ -26,8 +24,6 @@ type StudentClassRow = {
   student_name?: string;
 };
 
-/* ---------- Styling helpers ---------- */
-
 const cardGradientColors = [
   'from-blue-400 to-blue-600',
   'from-green-400 to-green-600',
@@ -43,10 +39,7 @@ function statusPillClasses(status?: string) {
   return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
 }
 
-/* ---------- Component ---------- */
-
 export default function StudentsSearch() {
-  // Search & selection
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -55,15 +48,11 @@ export default function StudentsSearch() {
   const [matches, setMatches] = useState<StudentMatch[] | null>(null);
   const [selected, setSelected] = useState<StudentMatch | null>(null);
 
-  // Classes for selected student
   const [classesLoading, setClassesLoading] = useState(false);
   const [classesError, setClassesError] = useState<string | null>(null);
   const [classes, setClasses] = useState<StudentClassRow[] | null>(null);
 
-  // Modal for a selected class
   const [modalClass, setModalClass] = useState<StudentClassRow | null>(null);
-
-  /* ---------- Actions ---------- */
 
   async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -87,14 +76,10 @@ export default function StudentsSearch() {
         method: 'GET',
         cache: 'no-store',
       });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || `Search failed (${res.status})`);
 
-      // Better error message if a non-JSON response comes back
-      const ct = res.headers.get('content-type') || '';
-      const payload = ct.includes('application/json') ? await res.json() : await res.text();
-
-      if (!res.ok) throw new Error((payload as any)?.error || String(payload) || `Search failed (${res.status})`);
-
-      const rows: StudentMatch[] = Array.isArray(payload) ? (payload as any) : (payload as any)?.records ?? [];
+      const rows: StudentMatch[] = Array.isArray(payload) ? payload : payload?.records ?? [];
       if (!rows || rows.length === 0) {
         setNoResults(true);
         return;
@@ -124,14 +109,10 @@ export default function StudentsSearch() {
     try {
       const url = `/api/xano/student-classes?student_id=${encodeURIComponent(String(s.student_id ?? ''))}`;
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      const ct = res.headers.get('content-type') || '';
-      const payload = ct.includes('application/json') ? await res.json() : await res.text();
-
-      if (!res.ok) throw new Error((payload as any)?.error || String(payload) || `Failed (${res.status})`);
-
-      let items: StudentClassRow[] = Array.isArray(payload) ? (payload as any) : (payload as any)?.records ?? [];
-
+      let items: StudentClassRow[] = Array.isArray(payload) ? payload : payload?.records ?? [];
       items = items.map(r => ({
         ...r,
         student_id: r.student_id ?? s.student_id,
@@ -150,8 +131,6 @@ export default function StudentsSearch() {
   }
 
   const closeModal = () => setModalClass(null);
-
-  /* ---------- UI ---------- */
 
   return (
     <>
@@ -172,7 +151,8 @@ export default function StudentsSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={(e) => {
-                  if (!e.target.value) e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
+                  if (!e.target.value)
+                    e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
                 }}
                 onBlur={(e) => (e.target.placeholder = 'Enter student name or ID...')}
               />
@@ -188,11 +168,11 @@ export default function StudentsSearch() {
             </div>
           </form>
 
-            {searchError && (
-              <p className="mt-3 text-sm text-red-600" role="alert">
-                {searchError}
-              </p>
-            )}
+          {searchError && (
+            <p className="mt-3 text-sm text-red-600" role="alert">
+              {searchError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -257,7 +237,9 @@ export default function StudentsSearch() {
               <div>
                 <div className="text-xl font-bold text-gray-900">{selected.student_name || 'Student'}</div>
                 <div className="text-sm text-gray-600">ID: {selected.student_id ?? '—'}</div>
-                {selected.parent_email && <div className="text-sm text-gray-500">Parent: {selected.parent_email}</div>}
+                {selected.parent_email && (
+                  <div className="text-sm text-gray-500">Parent: {selected.parent_email}</div>
+                )}
               </div>
             </div>
             <div className="text-right text-sm text-gray-600">
@@ -301,18 +283,9 @@ export default function StudentsSearch() {
                   className="text-left class-card bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-300"
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div
-                      className={`w-12 h-12 bg-gradient-to-r ${
-                        cardGradientColors[idx % cardGradientColors.length]
-                      } rounded-xl flex items-center justify-center shadow-lg`}
-                    >
+                    <div className={`w-12 h-12 bg-gradient-to-r ${cardGradientColors[idx % cardGradientColors.length]} rounded-xl flex items-center justify-center shadow-lg`}>
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
                       </svg>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(c.attendance_status)}`}>
