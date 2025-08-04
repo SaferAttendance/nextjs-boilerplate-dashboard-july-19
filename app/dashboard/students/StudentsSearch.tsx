@@ -36,39 +36,12 @@ const cardGradientColors = [
   'from-pink-400 to-pink-600',
 ];
 
+// Map attendance status -> pill colors
 function statusPillClasses(status?: string) {
   const s = (status || '').toString().trim().toLowerCase();
   if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
-  if (s === 'absent')  return 'bg-red-100 text-red-800 ring-1 ring-red-200';
-  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
-}
-
-/* ---------- Helpers ---------- */
-
-// Normalize a row from Xano (handles different key casings)
-function normalizeStudentMatch(r: any): StudentMatch {
-  const student_id =
-    r.student_id ??
-    r.Student_ID ??
-    r.studentId ??
-    r.id;
-
-  const student_name =
-    r.student_name ??
-    r.Student_Name ??
-    r.name;
-
-  const parent_email = r.parent_email ?? r.parentEmail;
-  const school_code  = r.school_code  ?? r.schoolCode  ?? r.school;
-  const district_code = r.district_code ?? r.districtCode ?? r.district;
-
-  return {
-    student_id,
-    student_name,
-    parent_email,
-    school_code,
-    district_code,
-  };
+  if (s === 'absent') return 'bg-red-100 text-red-800 ring-1 ring-red-200';
+  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200'; // pending / unknown
 }
 
 /* ---------- Component ---------- */
@@ -91,6 +64,8 @@ export default function StudentsSearch() {
   // Modal for a selected class (details)
   const [modalClass, setModalClass] = useState<StudentClassRow | null>(null);
 
+  /* ---------- Actions ---------- */
+
   async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSearchError(null);
@@ -109,27 +84,35 @@ export default function StudentsSearch() {
 
     setLoading(true);
     try {
+      // Singular route: this one applies district/school scoping on the server
       const res = await fetch(`/api/xano/student?q=${encodeURIComponent(q)}`, {
         method: 'GET',
         cache: 'no-store',
       });
       const payload = await res.json();
+
       if (!res.ok) throw new Error(payload?.error || `Search failed (${res.status})`);
 
-      const raw: any[] = Array.isArray(payload) ? payload : payload?.records ?? [];
-      const rows: StudentMatch[] = raw.map(normalizeStudentMatch).filter(m => m.student_id != null);
+      // Accept array or single object
+      let rows: StudentMatch[] = [];
+      if (Array.isArray(payload)) rows = payload;
+      else if (payload && typeof payload === 'object') rows = [payload];
 
-      if (!rows || rows.length === 0) {
+      // Filter out empties if any
+      rows = rows.filter((r) => r && (r.student_id || r.student_name));
+
+      if (rows.length === 0) {
         setNoResults(true);
         return;
       }
 
-      setMatches(rows);
-
-      // Auto-select and load classes if there’s exactly one
+      // If only one match -> auto select
       if (rows.length === 1) {
         await selectStudent(rows[0]);
+        return;
       }
+
+      setMatches(rows);
     } catch (err: any) {
       setSearchError(err?.message || 'Search failed');
       setNoResults(true);
@@ -140,26 +123,33 @@ export default function StudentsSearch() {
 
   async function selectStudent(s: StudentMatch) {
     setSelected(s);
+    setMatches(null); // hide the matches list
     setClasses(null);
     setClassesError(null);
     setModalClass(null);
 
-    if (!s?.student_id) {
-      setClassesError('Missing student_id for classes lookup');
-      return;
-    }
+    if (!s?.student_id && !s?.student_name) return;
 
     setClassesLoading(true);
     try {
-      const url = `/api/xano/student-classes?student_id=${encodeURIComponent(String(s.student_id))}`;
+      // Include parent_email so the API route can forward all required params to Xano
+      const params = new URLSearchParams({
+        student_id: String(s.student_id ?? ''),
+      });
+      if (s.parent_email) params.set('parent_email', s.parent_email);
+
+      const url = `/api/xano/student-classes?${params.toString()}`;
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
+
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      let items: StudentClassRow[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      let items: StudentClassRow[] = Array.isArray(payload)
+        ? payload
+        : payload?.records ?? [];
 
-      // Normalize student fields onto each row (useful for modal)
-      items = items.map(r => ({
+      // Normalize student fields onto each row (useful for display)
+      items = items.map((r) => ({
         ...r,
         student_id: r.student_id ?? s.student_id,
         student_name: r.student_name ?? s.student_name,
@@ -349,7 +339,11 @@ export default function StudentsSearch() {
                         />
                       </svg>
                     </div>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(c.attendance_status)}`}>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(
+                        c.attendance_status,
+                      )}`}
+                    >
                       {c.attendance_status || 'Pending'}
                     </span>
                   </div>
@@ -369,7 +363,12 @@ export default function StudentsSearch() {
                     {c.teacher_email && (
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.003 5.884L12 10.882l9.997-4A2 2 0 0019 4H5a2 2 0 00-1.997 1.884z M22 8.118l-10 5-10-5V16a2 2 0 002 2h16a2 2 0 002-2V8.118z" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M2.003 5.884L12 10.882l9.997-4A2 2 0 0019 4H5a2 2 0 00-1.997 1.884z M22 8.118l-10 5-10-5V16a2 2 0 002 2h16a2 2 0 002-2V8.118z"
+                          />
                         </svg>
                         <span>{c.teacher_email}</span>
                       </div>
@@ -419,7 +418,11 @@ export default function StudentsSearch() {
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm text-gray-600 mb-1">Attendance Status</p>
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(modalClass.attendance_status)}`}>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(
+                      modalClass.attendance_status,
+                    )}`}
+                  >
                     {modalClass.attendance_status || 'Pending'}
                   </span>
                 </div>
@@ -432,8 +435,6 @@ export default function StudentsSearch() {
                   <p className="font-semibold text-gray-800">{modalClass.student_id ?? selected?.student_id ?? '—'}</p>
                 </div>
               </div>
-
-              {/* extra actions could go here */}
             </div>
           </div>
         </div>
