@@ -36,12 +36,43 @@ const cardGradientColors = [
   'from-pink-400 to-pink-600',
 ];
 
-// Map attendance status -> pill colors
 function statusPillClasses(status?: string) {
   const s = (status || '').toString().trim().toLowerCase();
   if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
   if (s === 'absent') return 'bg-red-100 text-red-800 ring-1 ring-red-200';
-  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200'; // pending / unknown
+  return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
+}
+
+/* ---------- Dedup helper ---------- */
+
+function dedupeStudents(rows: StudentMatch[]): StudentMatch[] {
+  const map = new Map<string, StudentMatch>();
+  for (const r of rows) {
+    const idKey = r.student_id != null ? String(r.student_id) : '';
+    const nameKey = (r.student_name || '').trim().toLowerCase();
+    const key = idKey || nameKey; // prefer student_id; fall back to name
+    if (!key) continue;
+    if (!map.has(key)) {
+      map.set(key, r);
+    } else {
+      // Merge any missing fields from duplicates (keep first as base)
+      const base = map.get(key)!;
+      map.set(key, {
+        ...base,
+        parent_email: base.parent_email || r.parent_email,
+        school_code: base.school_code || r.school_code,
+        district_code: base.district_code || r.district_code,
+        student_name: base.student_name || r.student_name,
+      });
+    }
+  }
+  // Sort by name then id for stable display
+  return Array.from(map.values()).sort((a, b) => {
+    const an = (a.student_name || '').toLowerCase();
+    const bn = (b.student_name || '').toLowerCase();
+    if (an && bn && an !== bn) return an.localeCompare(bn);
+    return String(a.student_id ?? '').localeCompare(String(b.student_id ?? ''));
+  });
 }
 
 /* ---------- Component ---------- */
@@ -84,35 +115,27 @@ export default function StudentsSearch() {
 
     setLoading(true);
     try {
-      // Singular route: this one applies district/school scoping on the server
       const res = await fetch(`/api/xano/student?q=${encodeURIComponent(q)}`, {
         method: 'GET',
         cache: 'no-store',
       });
       const payload = await res.json();
-
       if (!res.ok) throw new Error(payload?.error || `Search failed (${res.status})`);
 
-      // Accept array or single object
-      let rows: StudentMatch[] = [];
-      if (Array.isArray(payload)) rows = payload;
-      else if (payload && typeof payload === 'object') rows = [payload];
+      const raw: StudentMatch[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      const unique = dedupeStudents(raw);
 
-      // Filter out empties if any
-      rows = rows.filter((r) => r && (r.student_id || r.student_name));
-
-      if (rows.length === 0) {
+      if (!unique || unique.length === 0) {
         setNoResults(true);
         return;
       }
 
-      // If only one match -> auto select
-      if (rows.length === 1) {
-        await selectStudent(rows[0]);
-        return;
-      }
+      setMatches(unique);
 
-      setMatches(rows);
+      // If exactly one unique student, auto-select and load classes
+      if (unique.length === 1) {
+        await selectStudent(unique[0]);
+      }
     } catch (err: any) {
       setSearchError(err?.message || 'Search failed');
       setNoResults(true);
@@ -123,7 +146,6 @@ export default function StudentsSearch() {
 
   async function selectStudent(s: StudentMatch) {
     setSelected(s);
-    setMatches(null); // hide the matches list
     setClasses(null);
     setClassesError(null);
     setModalClass(null);
@@ -132,23 +154,19 @@ export default function StudentsSearch() {
 
     setClassesLoading(true);
     try {
-      // Include parent_email so the API route can forward all required params to Xano
       const params = new URLSearchParams({
         student_id: String(s.student_id ?? ''),
+        district_code: s.district_code || '',
+        school_code: s.school_code || '',
+        parent_email: s.parent_email || '',
       });
-      if (s.parent_email) params.set('parent_email', s.parent_email);
-
       const url = `/api/xano/student-classes?${params.toString()}`;
+
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
-
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      let items: StudentClassRow[] = Array.isArray(payload)
-        ? payload
-        : payload?.records ?? [];
-
-      // Normalize student fields onto each row (useful for display)
+      let items: StudentClassRow[] = Array.isArray(payload) ? payload : payload?.records ?? [];
       items = items.map((r) => ({
         ...r,
         student_id: r.student_id ?? s.student_id,
@@ -241,7 +259,7 @@ export default function StudentsSearch() {
         </div>
       )}
 
-      {/* Multiple Matches */}
+      {/* Multiple unique matches */}
       {matches && !selected && matches.length > 1 && (
         <div className="max-w-3xl mx-auto mb-10">
           <h3 className="text-lg font-semibold text-gray-800 mb-3">Select a student</h3>
@@ -341,7 +359,7 @@ export default function StudentsSearch() {
                     </div>
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(
-                        c.attendance_status,
+                        c.attendance_status
                       )}`}
                     >
                       {c.attendance_status || 'Pending'}
@@ -418,11 +436,7 @@ export default function StudentsSearch() {
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm text-gray-600 mb-1">Attendance Status</p>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(
-                      modalClass.attendance_status,
-                    )}`}
-                  >
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(modalClass.attendance_status)}`}>
                     {modalClass.attendance_status || 'Pending'}
                   </span>
                 </div>
