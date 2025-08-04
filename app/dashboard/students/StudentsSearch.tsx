@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 
+/* ---------- Types (align with your Xano payloads) ---------- */
+
 type StudentMatch = {
   student_id: string | number;
   student_name?: string;
@@ -24,6 +26,8 @@ type StudentClassRow = {
   student_name?: string;
 };
 
+/* ---------- Styling helpers ---------- */
+
 const cardGradientColors = [
   'from-blue-400 to-blue-600',
   'from-green-400 to-green-600',
@@ -39,7 +43,38 @@ function statusPillClasses(status?: string) {
   return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
 }
 
+/* ---------- Helpers ---------- */
+
+// Normalize a row from Xano (handles different key casings)
+function normalizeStudentMatch(r: any): StudentMatch {
+  const student_id =
+    r.student_id ??
+    r.Student_ID ??
+    r.studentId ??
+    r.id;
+
+  const student_name =
+    r.student_name ??
+    r.Student_Name ??
+    r.name;
+
+  const parent_email = r.parent_email ?? r.parentEmail;
+  const school_code  = r.school_code  ?? r.schoolCode  ?? r.school;
+  const district_code = r.district_code ?? r.districtCode ?? r.district;
+
+  return {
+    student_id,
+    student_name,
+    parent_email,
+    school_code,
+    district_code,
+  };
+}
+
+/* ---------- Component ---------- */
+
 export default function StudentsSearch() {
+  // Search & selection
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -48,10 +83,12 @@ export default function StudentsSearch() {
   const [matches, setMatches] = useState<StudentMatch[] | null>(null);
   const [selected, setSelected] = useState<StudentMatch | null>(null);
 
+  // Classes for selected student
   const [classesLoading, setClassesLoading] = useState(false);
   const [classesError, setClassesError] = useState<string | null>(null);
   const [classes, setClasses] = useState<StudentClassRow[] | null>(null);
 
+  // Modal for a selected class (details)
   const [modalClass, setModalClass] = useState<StudentClassRow | null>(null);
 
   async function handleSearch(e: React.FormEvent<HTMLFormElement>) {
@@ -79,13 +116,17 @@ export default function StudentsSearch() {
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || `Search failed (${res.status})`);
 
-      const rows: StudentMatch[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      const raw: any[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+      const rows: StudentMatch[] = raw.map(normalizeStudentMatch).filter(m => m.student_id != null);
+
       if (!rows || rows.length === 0) {
         setNoResults(true);
         return;
       }
 
       setMatches(rows);
+
+      // Auto-select and load classes if there’s exactly one
       if (rows.length === 1) {
         await selectStudent(rows[0]);
       }
@@ -103,16 +144,21 @@ export default function StudentsSearch() {
     setClassesError(null);
     setModalClass(null);
 
-    if (!s?.student_id && !s?.student_name) return;
+    if (!s?.student_id) {
+      setClassesError('Missing student_id for classes lookup');
+      return;
+    }
 
     setClassesLoading(true);
     try {
-      const url = `/api/xano/student-classes?student_id=${encodeURIComponent(String(s.student_id ?? ''))}`;
+      const url = `/api/xano/student-classes?student_id=${encodeURIComponent(String(s.student_id))}`;
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
       let items: StudentClassRow[] = Array.isArray(payload) ? payload : payload?.records ?? [];
+
+      // Normalize student fields onto each row (useful for modal)
       items = items.map(r => ({
         ...r,
         student_id: r.student_id ?? s.student_id,
@@ -131,6 +177,8 @@ export default function StudentsSearch() {
   }
 
   const closeModal = () => setModalClass(null);
+
+  /* ---------- UI ---------- */
 
   return (
     <>
@@ -151,12 +199,16 @@ export default function StudentsSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={(e) => {
-                  if (!e.target.value)
-                    e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
+                  if (!e.target.value) e.target.placeholder = 'Try: “Kira”, “22227”, or “Joe Rogan”';
                 }}
                 onBlur={(e) => (e.target.placeholder = 'Enter student name or ID...')}
               />
-              <svg className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="absolute left-5 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <button
@@ -283,9 +335,18 @@ export default function StudentsSearch() {
                   className="text-left class-card bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 hover:shadow-2xl hover:scale-[1.02] transition-all duration-300"
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div className={`w-12 h-12 bg-gradient-to-r ${cardGradientColors[idx % cardGradientColors.length]} rounded-xl flex items-center justify-center shadow-lg`}>
+                    <div
+                      className={`w-12 h-12 bg-gradient-to-r ${
+                        cardGradientColors[idx % cardGradientColors.length]
+                      } rounded-xl flex items-center justify-center shadow-lg`}
+                    >
                       <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
                       </svg>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(c.attendance_status)}`}>
@@ -371,6 +432,8 @@ export default function StudentsSearch() {
                   <p className="font-semibold text-gray-800">{modalClass.student_id ?? selected?.student_id ?? '—'}</p>
                 </div>
               </div>
+
+              {/* extra actions could go here */}
             </div>
           </div>
         </div>
