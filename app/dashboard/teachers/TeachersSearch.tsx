@@ -3,9 +3,8 @@
 import React, { useState } from 'react';
 
 /* ---------- Types ---------- */
-// test
 
-// Rows returned by /api/xano/teachers (backed by your Xano teachers search)
+// Rows returned by /api/xano/teachers (one row per class)
 type XanoTeacherRow = {
   id: number;
   teacher_name?: string;
@@ -34,7 +33,13 @@ type StudentRow = {
   teacher_name?: string;
 };
 
-// View model for the UI
+// A single teacher option in the picker
+type TeacherMatch = {
+  name: string;
+  email: string;
+};
+
+// View model for the selected teacher
 type TeacherVM = {
   name: string;
   email: string;
@@ -47,7 +52,7 @@ type TeacherVM = {
     schedule?: string;     // derived from period if present
     room?: string;         // optional
     students: number;      // count of rows for this class_id
-    attendance?: number | null; // placeholder if you later compute %
+    attendance?: number | null; // placeholder for later
   }>;
 };
 
@@ -66,38 +71,78 @@ function statusPillClasses(status?: string) {
   const s = (status || '').toString().trim().toLowerCase();
   if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
   if (s === 'absent')  return 'bg-red-100 text-red-800 ring-1 ring-red-200';
-  // default + "pending"
   return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
+}
+
+/* ---------- Dedupe helpers ---------- */
+
+function normalizeEmail(v?: string) {
+  return (v || '').trim().toLowerCase();
+}
+function normalizeName(v?: string) {
+  return (v || '').trim();
+}
+
+// Collapse class-rows into unique teachers (keyed by email; fallback name)
+function dedupeTeachers(rows: XanoTeacherRow[]): TeacherMatch[] {
+  const map = new Map<string, TeacherMatch>();
+  for (const r of rows) {
+    const email = normalizeEmail(r.teacher_email);
+    const name = normalizeName(r.teacher_name) || 'Teacher';
+    const key = email || name.toLowerCase(); // prefer email
+    if (!key) continue;
+
+    if (!map.has(key)) {
+      map.set(key, { name, email });
+    } else {
+      const existing = map.get(key)!;
+      map.set(key, {
+        name: existing.name || name,
+        email: existing.email || email,
+      });
+    }
+  }
+  // stable sort by name, then email
+  return Array.from(map.values()).sort((a, b) => {
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    if (an !== bn) return an.localeCompare(bn);
+    return a.email.localeCompare(b.email);
+  });
 }
 
 /* ---------- Component ---------- */
 
 export default function TeachersSearch() {
-  // Search & results
+  // Search & raw results
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [teacher, setTeacher] = useState<TeacherVM | null>(null);
-  const [noResults, setNoResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noResults, setNoResults] = useState(false);
+  const [allRows, setAllRows] = useState<XanoTeacherRow[] | null>(null);
 
-  // Modal class card
+  // Picker state
+  const [matches, setMatches] = useState<TeacherMatch[] | null>(null);
+  const [selected, setSelected] = useState<TeacherMatch | null>(null);
+
+  // Selected teacher view model
+  const [teacher, setTeacher] = useState<TeacherVM | null>(null);
+
+  // Modal class card + attendance records
   const [modalClass, setModalClass] =
     useState<TeacherVM['classes'][number] | null>(null);
-
-  // Attendance records (inside modal)
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState<string | null>(null);
   const [records, setRecords] = useState<StudentRow[] | null>(null);
 
   /* ---------- Helpers ---------- */
 
-  // Convert Xano rows -> TeacherVM and de-dupe by class_id
+  // Convert class-rows -> TeacherVM for one teacher (dedupe classes by class_id)
   function toTeacherVM(rows: XanoTeacherRow[]): TeacherVM {
     const first = rows[0] ?? {};
-    const name = (first.teacher_name ?? '').trim() || 'Teacher';
+    const name = normalizeName(first.teacher_name) || 'Teacher';
     const email = (first.teacher_email ?? '').trim();
 
-    // Group rows by class_id (fallback to class_name|period if class_id missing)
     const byClass = new Map<
       string,
       { name: string; code: string; period?: string | number; students: number }
@@ -131,7 +176,7 @@ export default function TeachersSearch() {
     return {
       name,
       email,
-      department: '',  // keep layout consistent with your current UI
+      department: '',
       experience: '',
       employeeId: '',
       classes,
@@ -145,6 +190,9 @@ export default function TeachersSearch() {
     setError(null);
     setNoResults(false);
     setTeacher(null);
+    setMatches(null);
+    setSelected(null);
+    setAllRows(null);
     setModalClass(null);
     setRecords(null);
     setRecordsError(null);
@@ -173,11 +221,18 @@ export default function TeachersSearch() {
 
       if (!rows || rows.length === 0) {
         setNoResults(true);
-        setTeacher(null);
         return;
       }
 
-      setTeacher(toTeacherVM(rows));
+      // Save raw rows and build unique teacher list
+      setAllRows(rows);
+      const unique = dedupeTeachers(rows);
+      setMatches(unique);
+
+      // If exactly one teacher, select immediately
+      if (unique.length === 1) {
+        selectTeacher(unique[0], rows);
+      }
     } catch (err: any) {
       setError(err?.message || 'Search failed');
       setNoResults(true);
@@ -185,6 +240,29 @@ export default function TeachersSearch() {
       setLoading(false);
     }
   };
+
+  /* ---------- Selection ---------- */
+
+  function selectTeacher(t: TeacherMatch, sourceRows?: XanoTeacherRow[] | null) {
+    const rows = sourceRows ?? allRows ?? [];
+    const chosenEmail = normalizeEmail(t.email);
+    const filtered = rows.filter((r) => {
+      const email = normalizeEmail(r.teacher_email);
+      if (chosenEmail) return email === chosenEmail;
+      // fallback if email missing — match on normalized name
+      return normalizeName(r.teacher_name).toLowerCase() === t.name.toLowerCase();
+    });
+
+    setSelected(t);
+    setTeacher(filtered.length ? toTeacherVM(filtered) : {
+      name: t.name,
+      email: t.email,
+      department: '',
+      experience: '',
+      employeeId: '',
+      classes: [],
+    });
+  }
 
   /* ---------- Modal actions ---------- */
 
@@ -218,7 +296,6 @@ export default function TeachersSearch() {
         ? payload
         : payload?.records ?? [];
 
-      // Optional: sort by student_name
       items.sort((a, b) =>
         (a.student_name || '').localeCompare(b.student_name || '')
       );
@@ -258,8 +335,7 @@ export default function TeachersSearch() {
                       'Try: Sarah Johnson, john@school.edu, or Mike Davis';
                 }}
                 onBlur={(e) =>
-                  (e.target.placeholder =
-                    'Enter teacher name or email address...')
+                  (e.target.placeholder = 'Enter teacher name or email address...')
                 }
               />
               <svg
@@ -315,7 +391,33 @@ export default function TeachersSearch() {
         </div>
       )}
 
-      {/* Results */}
+      {/* Multiple unique matches */}
+      {matches && !selected && matches.length > 1 && (
+        <div className="max-w-3xl mx-auto mb-10">
+          <h3 className="text-lg font-semibold text-gray-800 mb-3">Select a teacher</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {matches.map((m, i) => (
+              <button
+                key={`${m.email || m.name}-${i}`}
+                onClick={() => selectTeacher(m)}
+                className="text-left rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-brand-blue to-brand-dark text-white font-semibold">
+                    {(m.name?.[0] || m.email?.[0] || 'T').toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">{m.name || 'Teacher'}</div>
+                    <div className="text-sm text-gray-600">{m.email || '—'}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Selected teacher & classes */}
       {teacher && !loading && (
         <div className="fadein" data-testid="search-results">
           {/* Teacher Info Card */}
