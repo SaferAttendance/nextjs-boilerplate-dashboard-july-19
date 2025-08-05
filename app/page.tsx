@@ -1526,17 +1526,7 @@ export default function Page() {
                   <a href="#security" className="hover:text-white transition-colors">
                     Security
                   </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    Integrations
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    API
-                  </a>
-                </li>
+                </li>               
               </ul>
             </div>
 
@@ -1544,28 +1534,28 @@ export default function Page() {
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="/contact" className="hover:text-white transition-colors">
                     Help Center
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="/contact" className="hover:text-white transition-colors">
                     Contact Us
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="/contact" className="hover:text-white transition-colors">
                     Training
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
+                  <a href="/contact" className="hover:text-white transition-colors">
                     System Status
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    Privacy Policy
+                  <a href="/privacy" className="hover:text-white transition-colors">
+                    Privacy & Security Policy
                   </a>
                 </li>
               </ul>
@@ -1574,7 +1564,7 @@ export default function Page() {
 
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
             <p>
-              &copy; 2024 Safer Attendance. All rights reserved. Keeping schools
+              &copy; 2025 Safer Attendance. All rights reserved. Keeping schools
               safe, one student at a time.
             </p>
           </div>
