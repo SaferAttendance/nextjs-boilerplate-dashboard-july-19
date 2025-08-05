@@ -41,7 +41,7 @@ export default function ContactPage() {
 
   const openMap = useCallback(() => {
     // Replace with your office Google Maps link
-    window.open('https://maps.google.com/?q=Safer+Attendance+Headquarters', '_blank');
+    window.open('https://www.google.com/maps/place/251+Little+Falls+Dr,+Wilmington,+DE+19808/@39.7611519,-75.6252365,17z/data=!3m1!4b1!4m6!3m5!1s0x89c6fe75d85ed30f:0xac3eff6665d8aeb2!8m2!3d39.7611478!4d-75.6226616!16s%2Fg%2F11dyp2bhc8?entry=ttu&g_ep=EgoyMDI1MDczMC4wIKXMDSoASAFQAw%3D%3D', '_blank');
   }, []);
 
   const contactExecutive = useCallback((name: string, title: string) => {
@@ -735,9 +735,9 @@ export default function ContactPage() {
                     <p className="leading-relaxed text-gray-600">
                       Safer Attendance Headquarters
                       <br />
-                      1234 Education Drive, Suite 500
+                      251 Little Falls Drive
                       <br />
-                      Innovation City, IC 12345
+                      Wilmington, Delaware 19808
                       <br />
                       United States
                     </p>
