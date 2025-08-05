@@ -154,8 +154,8 @@ export default async function DashboardPage() {
                 <path d="M9 9v4M11 9v4M13 9v4" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
-            <h3 className="text-base font-semibold text-gray-900">Search Classes</h3>
-            <p className="mt-1 text-sm text-gray-600">Browse class schedules and attendance information.</p>
+            <h3 className="text-base font-semibold text-gray-900">Search Classes & Assign Substitutes</h3>
+            <p className="mt-1 text-sm text-gray-600">Browse class schedules, add a Substitute Teacher, and see live attendance information.</p>
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
               Open
               <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
                 <path d="M17 11l2 2 4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h3 className="text-base font-semibold text-gray-900">Substitute Assignments</h3>
+            <h3 className="text-base font-semibold text-gray-900">View and Remove Substitute Assignments</h3>
             <p className="mt-1 text-sm text-gray-600">Manage substitute teacher assignments and coverage.</p>
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
               Open
