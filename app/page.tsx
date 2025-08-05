@@ -1529,22 +1529,6 @@ export default function Page() {
                 </li>               
               </ul>
             </div>
-
-
-
-<div>
-              <h4 className="text-lg font-semibold mb-4">Contact</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li>info@saferattendance.com</li>
-                <li>(856) 712-9455 </li>
-                <li>24/7 Technical Support</li>
-                <li>Documentation</li>
-              </ul>
-            </div>
-          </div>
-
-
-
             <div>
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
@@ -1559,13 +1543,13 @@ export default function Page() {
                   </a>
                 </li>
                 <li>
-                  <a href="/contact" className="hover:text-white transition-colors">
-                    Training
+                  <a href="#" className="hover:text-white transition-colors">
+                    info@saferattendance.com
                   </a>
                 </li>
                 <li>
-                  <a href="/contact" className="hover:text-white transition-colors">
-                    System Status
+                  <a href="#" className="hover:text-white transition-colors">
+                    (856) 712-9455
                   </a>
                 </li>
                 <li>
