@@ -1,52 +1,48 @@
-/* ------------------------------------------------------------------
-   Proxies GET → process.env.XANO_ASSIGN_SUB_URL
-   ------------------------------------------------------------------*/
+/* Proxy GET to XANO_ASSIGN_SUB_URL
+   Ensures: sub_email, teacher_email, class_id, class_name,
+            school_code, district_code, period, admin_email  */
 import { NextRequest, NextResponse } from 'next/server';
-
 export const runtime = 'nodejs';
 
 const XANO = (process.env.XANO_ASSIGN_SUB_URL || '').replace(/\/$/, '');
 
-function readCookie(req: NextRequest, name: string) {
-  const c: any = req.cookies.get(name);
+function cookie(req: NextRequest, key: string) {
+  const c: any = req.cookies.get(key);
   return typeof c === 'string' ? c : c?.value;
 }
 
 export async function GET(req: NextRequest) {
   if (!XANO) {
-    return NextResponse.json(
-      { error: 'Missing XANO_ASSIGN_SUB_URL env var' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'XANO_ASSIGN_SUB_URL not set' }, { status: 500 });
   }
 
-  const { searchParams } = new URL(req.url);
-
-  /* ------------ scope from cookies ------------ */
-  const district_code = readCookie(req, 'district_code');
-  const school_code   = readCookie(req, 'school_code');
-  const admin_email   = readCookie(req, 'email') ||
-                        readCookie(req, 'session_email');
+  const src = new URL(req.url).searchParams;
+  /* ----------- pull mandatory admin-scope cookies ----------- */
+  const district_code = cookie(req, 'district_code');
+  const school_code   = cookie(req, 'school_code');
+  const admin_email   = cookie(req, 'email') || cookie(req, 'session_email');
 
   if (!district_code || !school_code || !admin_email) {
-    return NextResponse.json(
-      { error: 'Missing admin cookies (district / school / email)' },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: 'Missing admin cookies' }, { status: 401 });
   }
 
-  /* ------------ build Xano request ------------ */
+  /* ----------- build Xano URL, validating all 8 inputs ----------- */
   const url = new URL(XANO);
+  const required = ['sub_email', 'teacher_email', 'class_id', 'class_name', 'period'];
+
+  required.forEach((k) => {
+    const v = src.get(k);
+    if (!v) return NextResponse.json({ error: `Missing ${k}` }, { status: 400 });
+    url.searchParams.set(k, v);
+  });
+
   url.searchParams.set('district_code', district_code);
   url.searchParams.set('school_code',   school_code);
   url.searchParams.set('admin_email',   admin_email);
 
-  // forward everything the client sent (sub_email, class_id, …)
-  searchParams.forEach((v, k) => url.searchParams.set(k, v));
+  const upstream = await fetch(url.toString(), { cache: 'no-store' });
+  const bodyTxt  = await upstream.text();              // Xano may return ''
+  const bodyJson = bodyTxt ? JSON.parse(bodyTxt) : null;
 
-  const res  = await fetch(url.toString(), { cache: 'no-store' });
-  const text = await res.text();              // Xano sometimes returns ''
-  const data = text ? JSON.parse(text) : null;
-
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json(bodyJson, { status: upstream.status });
 }
