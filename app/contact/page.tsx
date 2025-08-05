@@ -36,7 +36,7 @@ export default function ContactPage() {
   }, []);
 
   const sendQuickEmail = useCallback(() => {
-    window.location.href = 'mailto:sales@saferattendance.com?subject=Contact%20Safer%20Attendance';
+    window.location.href = 'mailto:info@saferattendance.com?subject=Contact%20Safer%20Attendance';
   }, []);
 
   const openMap = useCallback(() => {
@@ -985,7 +985,7 @@ export default function ContactPage() {
                 </svg>
               </div>
               <h3 className="mb-2 text-lg font-semibold text-gray-800">Email Us</h3>
-              <p className="font-medium text-brand-dark">sales@saferattendance.com</p>
+              <p className="font-medium text-brand-dark">info@saferattendance.com</p>
             </button>
           </div>
         </div>
@@ -1015,7 +1015,7 @@ export default function ContactPage() {
               <h4 className="mb-4 text-lg font-semibold">Quick Contact</h4>
               <ul className="space-y-2 text-gray-400">
                 <li>📞 1-800-SAFER-01</li>
-                <li>✉️ sales@saferattendance.com</li>
+                <li>✉️ info@saferattendance.com</li>
                 <li>💬 Live Chat Available</li>
                 <li>🚨 24/7 Emergency Support</li>
               </ul>
