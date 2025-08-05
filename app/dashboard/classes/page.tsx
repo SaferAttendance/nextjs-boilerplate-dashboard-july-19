@@ -1,9 +1,8 @@
+// app/dashboard/classes/page.tsx
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import dynamic from 'next/dynamic';
-
-const ClassesSearch = dynamic(() => import('./ClassesSearch'), { ssr: false });
+import ClassesSearch from './ClassesSearch';   // ← import directly – no dynamic
 
 export default async function ClassesPage() {
   const jar = await cookies();
@@ -18,19 +17,19 @@ export default async function ClassesPage() {
   }
 
   const fullName =
-    jar.get('full_name')?.value ||
-    jar.get('fullname')?.value ||
+    jar.get('full_name')?.value ??
+    jar.get('fullname')?.value ??
     'Admin';
 
   return (
     <main className="relative min-h-screen font-montserrat bg-gradient-to-br from-brand-blue via-brand-light to-white">
-      {/* subtle blobs */}
+      {/* Background blobs */}
       <div className="pointer-events-none absolute inset-0 opacity-5">
         <div className="absolute top-20 left-20 h-32 w-32 rounded-full bg-brand-dark blur-xl" />
         <div className="absolute bottom-20 right-20 h-40 w-40 rounded-full bg-brand-blue blur-xl" />
       </div>
 
-      {/* header (matches teachers / students pages) */}
+      {/* Header */}
       <header className="relative z-10 border-b border-white/20 bg-white/80 backdrop-blur-sm shadow-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
@@ -67,9 +66,9 @@ export default async function ClassesPage() {
         </div>
       </header>
 
-      {/* content */}
+      {/* Content */}
       <section className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <ClassesSearch />
+        <ClassesSearch />   {/* this stays a client component */}
       </section>
     </main>
   );
