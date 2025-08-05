@@ -784,15 +784,6 @@ export default function ContactPage() {
                       <p>
                         <strong>General:</strong> info@saferattendance.com
                       </p>
-                      <p>
-                        <strong>Sales:</strong> sales@saferattendance.com
-                      </p>
-                      <p>
-                        <strong>Support:</strong> support@saferattendance.com
-                      </p>
-                      <p>
-                        <strong>Partnerships:</strong> partners@saferattendance.com
-                      </p>
                     </div>
                   </div>
                 </div>
