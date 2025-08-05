@@ -907,8 +907,7 @@ export default function ContactPage() {
                 onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-purple to-purple-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
-                Contact Kira
-              <p className="font-medium text-brand-dark">info@saferattendance.com</p>
+                Contact Kira              
               </button>
             </div>
 
