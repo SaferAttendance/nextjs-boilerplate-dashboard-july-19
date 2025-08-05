@@ -31,8 +31,15 @@ export default function ContactPage() {
   }, []);
 
   const startLiveChat = useCallback(() => {
-    // TODO: wire to real chat (Intercom/Crisp/Drift) here
-    alert('Live chat opening... Connect with our support team instantly!');
+    // Open Re:amaze widget if available, else provide a friendly fallback
+    try {
+      const r = (window as any).reamaze;
+      if (typeof r === 'function') {
+        r('open');
+        return;
+      }
+    } catch (_) {}
+    alert('Live chat is loading… Please click the chat bubble in the bottom-right if it does not open automatically.');
   }, []);
 
   const sendQuickEmail = useCallback(() => {
@@ -165,6 +172,53 @@ export default function ContactPage() {
     <main className="font-montserrat bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-screen">
       {/* Calendly script (for inline widget) */}
       <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
+
+      {/* Re:amaze loader */}
+      <Script
+        id="reamaze-loader"
+        src="https://cdn.reamaze.com/assets/reamaze-loader.js"
+        strategy="afterInteractive"
+      />
+      {/* Re:amaze configuration (your exact snippet) */}
+      <Script
+        id="reamaze-config"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            window._support = window._support || { ui: {}, user: {} };
+            window._support['account'] = '3a97c9a9-f790-4f20-bc02-77632e9c9355';
+            window._support['ui']['contactMode'] = 'mixed';
+            window._support['ui']['enableKb'] = 'true';
+            window._support['ui']['mailbox'] = '60800917';
+            window._support['ui']['styles'] = {
+              widgetColor: 'rgba(16, 162, 197, 1)',
+              gradient: true,
+            };
+            window._support['ui']['shoutboxFacesMode'] = '';
+            window._support['ui']['widget'] = {
+              allowBotProcessing: 'false',
+              slug: 'safer-attendance-llc',
+              label: {
+                text: 'Let us know if you have any questions! 😊',
+                mode: "notification",
+                delay: 3,
+                duration: 30,
+                primary: '',
+                secondary: '',
+                sound: true,
+              },
+              position: 'bottom-right'
+            };
+            window._support['ui']['overrides'] = window._support['ui']['overrides'] || {};
+            window._support['ui']['overrides']['confirmationMessage'] =
+              'Your message has been received! A Safer Attendance representative will be with you shortly. Please feel free to email us at info@saferattendance.com or call us at (856) 712-9455';
+            window._support['apps'] = {
+              recentConversations: {},
+              faq: {"enabled": true}
+            };
+          `
+        }}
+      />
 
       {/* Animated Background Elements */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
