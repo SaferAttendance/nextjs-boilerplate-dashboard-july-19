@@ -757,13 +757,7 @@ export default function ContactPage() {
                     <h3 className="mb-2 text-xl font-semibold text-gray-800">Phone Support</h3>
                     <div className="space-y-2 text-gray-600">
                       <p>
-                        <strong>Sales:</strong> 1-800-SAFER-01
-                      </p>
-                      <p>
-                        <strong>Support:</strong> 1-800-SAFER-02
-                      </p>
-                      <p>
-                        <strong>Emergency:</strong> 1-800-SAFER-911
+                        <strong>(856) 712-9455</strong> 
                       </p>
                     </div>
                   </div>
@@ -959,7 +953,7 @@ export default function ContactPage() {
                 </svg>
               </div>
               <h3 className="mb-2 text-lg font-semibold text-gray-800">Call Sales</h3>
-              <p className="font-medium text-brand-dark">1-800-SAFER-01</p>
+              <p className="font-medium text-brand-dark">(856) 712-9455</p>
             </button>
 
             <button
@@ -1014,7 +1008,7 @@ export default function ContactPage() {
             <div>
               <h4 className="mb-4 text-lg font-semibold">Quick Contact</h4>
               <ul className="space-y-2 text-gray-400">
-                <li>📞 1-800-SAFER-01</li>
+                <li>📞 (856) 712-9455</li>
                 <li>✉️ info@saferattendance.com</li>
                 <li>💬 Live Chat Available</li>
                 <li>🚨 24/7 Emergency Support</li>
