@@ -1530,6 +1530,21 @@ export default function Page() {
               </ul>
             </div>
 
+
+
+<div>
+              <h4 className="text-lg font-semibold mb-4">Contact</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li>info@saferattendance.com</li>
+                <li>(856) 712-9455 </li>
+                <li>24/7 Technical Support</li>
+                <li>Documentation</li>
+              </ul>
+            </div>
+          </div>
+
+
+
             <div>
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
