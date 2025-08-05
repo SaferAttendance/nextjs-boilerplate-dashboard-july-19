@@ -2,15 +2,11 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-/**
- * Proxy → Xano CSV download endpoint.
- * It pulls district_code, school_code & admin_email from the
- * cookie jar (set at login) but also respects explicit query params.
- *
- * Environment variable needed:  XANO_CSV_DOWNLOAD_URL
- */
 export async function GET(req: Request) {
-  const jar = cookies();
+  /* ▲▲  add await ▼▼ */
+  const jar = await cookies();              // <── was:  const jar = cookies();
+
+  /* --- everything else unchanged --- */
   const urlObj = new URL(req.url);
 
   const district_code =
