@@ -2,237 +2,341 @@
 
 import React, { useState } from 'react';
 
-/* ---------- Types returned by /api/xano/classes ---------------------- */
-type XanoClassRow = {
-  id: number;
-  class_id?: string;
-  class_name?: string;
-  period?: number | string;
-  teacher_email?: string;
-  teacher_name?: string;
-  students_enrolled?: number;
-};
+/* ------------ types ------------------------------------------------------ */
 
-/* UI view model for one class ---------------------------------------- */
-type ClassVM = {
-  id: number;
-  code: string;
+type ClassMatch = {
+  id: string;
   name: string;
   period?: string | number;
-  teacher?: string;
-  students?: number;
+  teacher_email: string;
+  teacher_name?: string;
 };
 
-/* Small helper – capital letter icon colours ------------------------- */
-const cardColors = [
-  'from-blue-400 to-blue-600',
-  'from-green-400 to-green-600',
-  'from-purple-400 to-purple-600',
-  'from-orange-400 to-orange-600',
-  'from-pink-400 to-pink-600',
-];
+/* ------------ helpers ---------------------------------------------------- */
 
-/* -------------------------------------------------------------------- */
+function heading(text: string) {
+  return <h3 className="mb-6 text-xl font-bold text-gray-800">{text}</h3>;
+}
+
+/* ------------ main component -------------------------------------------- */
+
 export default function ClassesSearch() {
-  const [query, setQuery]           = useState('');
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [noResults, setNoResults]   = useState(false);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [matches, setMatches] = useState<ClassMatch[] | null>(null);
 
-  const [matches, setMatches]       = useState<ClassVM[] | null>(null);
-  const [selected, setSelected]     = useState<ClassVM | null>(null);
+  const [activeClass, setActiveClass] = useState<ClassMatch | null>(null);
+  const [modal, setModal] = useState<'assign' | 'info' | null>(null);
 
-  /* Convert rows -> unique classes (by class_id) */
-  function normalise(rows: XanoClassRow[]): ClassVM[] {
-    const map = new Map<string, ClassVM>();
-    for (const r of rows) {
-      const code = (r.class_id || '').trim();
-      if (!code) continue;
-      if (!map.has(code)) {
-        map.set(code, {
-          id: r.id,
-          code,
-          name: r.class_name || 'Class',
-          period: r.period,
-          teacher: r.teacher_name || r.teacher_email || '',
-          students: r.students_enrolled,
-        });
-      }
-    }
-    /* sort by period then name */
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.period && b.period && a.period !== b.period)
-        return Number(a.period) - Number(b.period);
-      return a.name.localeCompare(b.name);
-    });
-  }
+  /* ---------- search ---------------------------------------------------- */
 
-  /* ---------------- SEARCH ----------------------------------------- */
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setNoResults(false);
-    setSelected(null);
     setMatches(null);
 
     const q = query.trim();
-    if (!q) {
-      alert('Please enter a class name or ID');
-      return;
-    }
+    if (!q) return alert('Enter a class name or ID');
 
     setLoading(true);
     try {
       const res = await fetch(`/api/xano/classes?q=${encodeURIComponent(q)}`, {
         cache: 'no-store',
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Search failed (${res.status})`);
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      const rows: XanoClassRow[] = Array.isArray(data) ? data : data?.records ?? [];
-      if (!rows.length) { setNoResults(true); return; }
+      const rows: any[] = Array.isArray(payload) ? payload : payload?.records;
+      const list: ClassMatch[] =
+        rows?.map((r) => ({
+          id: r.class_id || r.id || '',
+          name: r.class_name || 'Class',
+          period: r.period,
+          teacher_email: r.teacher_email || '',
+          teacher_name: r.teacher_name,
+        })) || [];
 
-      const uniq = normalise(rows);
-      setMatches(uniq);
-
-      if (uniq.length === 1) setSelected(uniq[0]);
-    } catch (err: any) {
-      setError(err?.message || 'Search failed');
+      setMatches(list);
+      if (!list.length) setError('No class found');
+    } catch (e: any) {
+      setError(e?.message || 'Search failed');
     } finally {
       setLoading(false);
     }
   }
 
-  /* ---------------- UI --------------------------------------------- */
+  /* ---------- substitute assign flow ----------------------------------- */
+
+  const [subEmail, setSubEmail] = useState('');
+  const [subBusy, setSubBusy] = useState(false);
+  const [subMsg, setSubMsg] = useState<string | null>(null);
+
+  async function submitSubstitute() {
+    if (!activeClass) return;
+    const email = subEmail.trim().toLowerCase();
+    if (!email) return alert('Enter a substitute email');
+
+    setSubBusy(true);
+    setSubMsg(null);
+    try {
+      const url = `/api/xano/assign-sub`;
+      const res = await fetch(url, {
+        method: 'POST',
+        body: JSON.stringify({
+          sub_email: email,
+          teacher_email: activeClass.teacher_email,
+          class_id: activeClass.id,
+          class_name: activeClass.name,
+          period: activeClass.period,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
+      setSubMsg('Substitute assigned successfully ✔');
+    } catch (e: any) {
+      setSubMsg(e?.message || 'Failed to assign substitute');
+    } finally {
+      setSubBusy(false);
+    }
+  }
+
+  /* ---------- class-info flow ------------------------------------------ */
+
+  const [infoBusy, setInfoBusy] = useState(false);
+  const [infoError, setInfoError] = useState<string | null>(null);
+  const [infoRows, setInfoRows] = useState<any[] | null>(null);
+
+  async function loadClassInfo(c: ClassMatch) {
+    setInfoBusy(true);
+    setInfoError(null);
+    setInfoRows(null);
+    try {
+      const url = `/api/xano/class-info?class_id=${encodeURIComponent(
+        c.id
+      )}&class_name=${encodeURIComponent(
+        c.name
+      )}&teacher_email=${encodeURIComponent(c.teacher_email)}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
+      setInfoRows(Array.isArray(payload) ? payload : payload?.records);
+    } catch (e: any) {
+      setInfoError(e?.message || 'Failed to load roster');
+    } finally {
+      setInfoBusy(false);
+    }
+  }
+
+  /* ---------- modal wrapper -------------------------------------------- */
+
+  function closeModal() {
+    setModal(null);
+    setActiveClass(null);
+    setSubEmail('');
+    setSubMsg(null);
+    setInfoRows(null);
+    setInfoError(null);
+  }
+
+  /* ---------- ui -------------------------------------------------------- */
+
   return (
     <>
-      {/* ---- search bar ---- */}
-      <div className="text-center mb-12">
+      {/* hero */}
+      <div className="mb-12 text-center">
         <h2 className="mb-4 text-4xl font-bold text-gray-800">Find a Class</h2>
         <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
-          Search by <strong>class name</strong> or <strong>class&nbsp;ID</strong> to see roster &amp; details.
+          Search by <strong>class name</strong> (e.g.&nbsp;“Math”) or{' '}
+          <strong>class&nbsp;ID</strong> (e.g.&nbsp;“AA001”). After finding a
+          class you can either <em>view its roster / attendance</em> or{' '}
+          <em>assign a substitute teacher</em>. <br />Remember: you’ll remove
+          substitute access later from the <strong>Substitute Assignments</strong>{' '}
+          card on the dashboard.
         </p>
 
-        <form onSubmit={handleSearch} className="relative mx-auto max-w-2xl" autoComplete="off">
+        {/* search bar */}
+        <form
+          onSubmit={handleSearch}
+          className="relative mx-auto flex max-w-xl items-center"
+        >
           <input
-            className="w-full rounded-2xl border border-white/20 bg-white/90 px-6 py-4 pl-14 pr-16 text-lg shadow-lg backdrop-blur-sm
-                       focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-blue"
+            className="w-full rounded-l-2xl border border-white/20 bg-white/90 px-6 py-4 text-lg shadow-lg backdrop-blur-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-blue"
             placeholder="Enter class name or ID…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <svg className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
           <button
             type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-gradient-to-r from-brand-blue to-brand-dark
-                       px-6 py-2 font-medium text-white shadow-lg transition-all duration-200 hover:from-brand-dark hover:to-brand-blue"
+            disabled={loading}
+            className="rounded-r-2xl bg-brand-dark px-6 py-4 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Search
+            {loading ? 'Searching…' : 'Search'}
           </button>
         </form>
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && (
+          <p className="mt-4 text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        )}
       </div>
 
-      {/* ---- loading / empty ---- */}
-      {loading && (
-        <div className="py-16 text-center">
-          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-brand-blue border-t-transparent"></div>
-          <p className="font-medium text-gray-600">Searching for class…</p>
-        </div>
-      )}
-
-      {noResults && !loading && (
-        <div className="py-16 text-center">
-          <p className="text-xl font-semibold text-gray-800">No class found</p>
-        </div>
-      )}
-
-      {/* ---- choose one of many ---------------------------------- */}
-      {matches && !selected && matches.length > 1 && (
-        <section className="mx-auto mb-10 max-w-3xl">
-          <h3 className="mb-3 text-lg font-semibold text-gray-800">Select a class</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {matches.map((c, idx) => (
-              <button
-                key={c.code}
-                onClick={() => setSelected(c)}
-                className="rounded-xl border border-gray-200 bg-white/90 p-4 text-left shadow-sm transition
-                           hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full
-                                bg-gradient-to-r ${cardColors[idx % cardColors.length]} text-white font-semibold`}
-                  >
-                    {c.name[0]?.toUpperCase() || c.code[0]}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-gray-900">{c.name}</div>
-                    <div className="text-sm text-gray-600">{c.code}</div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ---- selected class detail card -------------------------- */}
-      {selected && (
-        <section className="mx-auto max-w-3xl rounded-2xl border border-white/20 bg-white/90 p-8 shadow-lg">
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      {/* results */}
+      <div className="grid gap-6">
+        {matches?.map((c) => (
+          <div
+            key={c.id}
+            className="flex flex-col gap-6 rounded-2xl bg-white/90 p-6 shadow-lg backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between"
+          >
             <div>
-              <h3 className="mb-1 text-2xl font-bold text-gray-800">{selected.name}</h3>
-              <p className="text-sm text-gray-600">
-                ID&nbsp;•&nbsp;<span className="font-mono">{selected.code}</span>
+              <h4 className="text-xl font-bold text-gray-800">{c.name}</h4>
+              <p className="text-sm text-gray-500">
+                ID&nbsp;•&nbsp;{c.id}
+                {c.period && (
+                  <>
+                    {' '}
+                    &nbsp;|&nbsp; <span className="capitalize">Period {c.period}</span>
+                  </>
+                )}
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                Teacher:&nbsp;{c.teacher_name || c.teacher_email}
               </p>
             </div>
-            {selected.period && (
-              <div className="rounded-lg bg-neutral-50 px-4 py-2 text-sm text-neutral-700">
-                Period&nbsp;{selected.period}
-              </div>
+
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <button
+                className="rounded-xl bg-brand-dark px-6 py-3 text-white transition-opacity hover:opacity-90"
+                onClick={() => {
+                  setActiveClass(c);
+                  setModal('assign');
+                }}
+              >
+                Assign&nbsp;Substitute
+              </button>
+              <button
+                className="rounded-xl border border-brand-dark px-6 py-3 text-brand-dark transition-colors hover:bg-brand-dark/10"
+                onClick={() => {
+                  setActiveClass(c);
+                  setModal('info');
+                  loadClassInfo(c);
+                }}
+              >
+                View&nbsp;Class&nbsp;Info
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ---------------------- modal overlay ---------------------------- */}
+      {modal && activeClass && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={closeModal}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute right-4 top-4 text-gray-500 hover:text-gray-700"
+              onClick={closeModal}
+            >
+              ✕
+            </button>
+
+            {/* assign substitute modal */}
+            {modal === 'assign' && (
+              <>
+                {heading(`Assign a Substitute for ${activeClass.name}`)}
+                <p className="mb-6 text-sm text-gray-600">
+                  Enter the substitute’s email below. The primary teacher’s
+                  access will be revoked immediately.
+                </p>
+
+                <input
+                  type="email"
+                  placeholder="substitute@example.com"
+                  className="mb-4 w-full rounded-xl border border-gray-200 px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                  value={subEmail}
+                  onChange={(e) => setSubEmail(e.target.value)}
+                />
+
+                {subMsg && (
+                  <p
+                    className={`mb-4 text-sm ${
+                      subMsg.includes('success') ? 'text-green-600' : 'text-red-600'
+                    }`}
+                  >
+                    {subMsg}
+                  </p>
+                )}
+
+                <button
+                  onClick={submitSubstitute}
+                  disabled={subBusy}
+                  className="w-full rounded-xl bg-brand-dark px-6 py-3 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {subBusy ? 'Assigning…' : 'Assign Substitute'}
+                </button>
+
+                <p className="mt-4 text-xs text-gray-500">
+                  You can remove substitute access later from the&nbsp;
+                  <strong>Substitute Assignments</strong> card.
+                </p>
+              </>
+            )}
+
+            {/* class-info modal */}
+            {modal === 'info' && (
+              <>
+                {heading(`Roster • ${activeClass.name}`)}
+                {infoBusy && <p>Loading roster…</p>}
+                {infoError && (
+                  <p className="text-sm text-red-600">{infoError}</p>
+                )}
+
+                {infoRows && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">
+                            Student
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">
+                            ID
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 bg-white">
+                        {infoRows.map((r: any) => (
+                          <tr key={r.id}>
+                            <td className="px-4 py-2 text-gray-800">
+                              {r.student_name || '—'}
+                            </td>
+                            <td className="px-4 py-2 text-gray-600">
+                              {r.student_id || '—'}
+                            </td>
+                            <td className="px-4 py-2">
+                              {r.attendance_status || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
-
-          <ul className="space-y-2 text-sm text-gray-700">
-            {selected.teacher && (
-              <li>
-                <span className="font-medium">Teacher: </span>
-                {selected.teacher}
-              </li>
-            )}
-            {selected.students !== undefined && (
-              <li>
-                <span className="font-medium">Students Enrolled: </span>
-                {selected.students}
-              </li>
-            )}
-          </ul>
-
-          {/* Action buttons */}
-          <div className="mt-8 flex flex-col items-stretch gap-4 sm:flex-row">
-            <button
-              onClick={() => {
-                const email = prompt('Substitute teacher email to assign?');
-                if (!email) return;
-                alert(`(demo) Would call Xano assign-sub endpoint with ${email}`);
-                /* A real call would POST → /api/xano/assign-sub … */
-              }}
-              className="flex-1 rounded-xl bg-brand-blue px-6 py-3 font-medium text-white shadow-sm transition hover:bg-brand-dark"
-            >
-              Assign Substitute
-            </button>
-            <button
-              onClick={() => alert('(demo) Would fetch class roster / info')}
-              className="flex-1 rounded-xl border border-brand-blue px-6 py-3 font-medium text-brand-blue transition hover:bg-brand-blue/10"
-            >
-              View Class Info
-            </button>
-          </div>
-        </section>
+        </div>
       )}
     </>
   );
