@@ -616,7 +616,7 @@ export default function AboutPage() {
               <h4 className="text-lg font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-gray-400">
                 <li>info@saferattendance.com</li>
-                <li>1-800-SAFER-01</li>
+                <li>(856) 712-9455</li>
                 <li>24/7 Support Available</li>
                 <li>Press Inquiries</li>
               </ul>
