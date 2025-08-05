@@ -89,6 +89,9 @@ export default function ClassesSearch() {
           class_id: activeClass.id,
           class_name: activeClass.name,
           period: activeClass.period,
+          school_code: activeClass.school_code,
+          district_code: activeClass.district_code,
+          admin_email: activeClass.admin_email,
         }),
         headers: { 'Content-Type': 'application/json' },
       });
