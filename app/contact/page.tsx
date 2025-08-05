@@ -15,6 +15,59 @@ export default function ContactPage() {
   // Tabs: 'calendar' | 'form'
   const [activeTab, setActiveTab] = useState<'calendar' | 'form'>('calendar');
 
+  // Re:amaze readiness + queued open
+  const [reamazeReady, setReamazeReady] = useState(false);
+  const [openChatQueued, setOpenChatQueued] = useState(false);
+
+  // Helper: try to open Re:amaze widget; return true if we think it worked.
+  const attemptOpenReamaze = useCallback(() => {
+    try {
+      const w = window as any;
+
+      // Official APIs (cover both styles just in case)
+      if (typeof w?.reamaze === 'function') {
+        w.reamaze('open');
+        return true;
+      }
+      if (w?.Reamaze && typeof w.Reamaze.open === 'function') {
+        w.Reamaze.open();
+        return true;
+      }
+
+      // DOM fallback (if API not exposed for some reason)
+      const trigger =
+        document.querySelector('[id*="reamaze"], [class*="reamaze"], [data-reamaze-widget]') as HTMLElement | null;
+      if (trigger) {
+        trigger.click();
+        return true;
+      }
+    } catch {
+      /* no-op */
+    }
+    return false;
+  }, []);
+
+  // Open chat handler used by buttons (no alerts)
+  const startLiveChat = useCallback(() => {
+    if (attemptOpenReamaze()) return;
+    // If not ready, queue an open and poll briefly
+    setOpenChatQueued(true);
+  }, [attemptOpenReamaze]);
+
+  // When loader finishes OR if we queued an open earlier, try again silently
+  useEffect(() => {
+    if (!openChatQueued) return;
+    let tries = 0;
+    const id = setInterval(() => {
+      tries += 1;
+      if (attemptOpenReamaze() || tries > 50) {
+        clearInterval(id);
+        setOpenChatQueued(false);
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [openChatQueued, attemptOpenReamaze]);
+
   // Smooth-scroll helper
   const smoothScroll = useCallback((selector: string) => {
     const el = document.querySelector(selector) as HTMLElement | null;
@@ -30,25 +83,15 @@ export default function ContactPage() {
     window.location.href = 'tel:1-800-SAFER-01';
   }, []);
 
-  const startLiveChat = useCallback(() => {
-    // Open Re:amaze widget if available, else provide a friendly fallback
-    try {
-      const r = (window as any).reamaze;
-      if (typeof r === 'function') {
-        r('open');
-        return;
-      }
-    } catch (_) {}
-    alert('Live chat is loading… Please click the chat bubble in the bottom-right if it does not open automatically.');
-  }, []);
-
   const sendQuickEmail = useCallback(() => {
     window.location.href = 'mailto:info@saferattendance.com?subject=Contact%20Safer%20Attendance';
   }, []);
 
   const openMap = useCallback(() => {
-    // Replace with your office Google Maps link
-    window.open('https://www.google.com/maps/place/251+Little+Falls+Dr,+Wilmington,+DE+19808/@39.7611519,-75.6252365,17z/data=!3m1!4b1!4m6!3m5!1s0x89c6fe75d85ed30f:0xac3eff6665d8aeb2!8m2!3d39.7611478!4d-75.6226616!16s%2Fg%2F11dyp2bhc8?entry=ttu&g_ep=EgoyMDI1MDczMC4wIKXMDSoASAFQAw%3D%3D', '_blank');
+    window.open(
+      'https://www.google.com/maps/place/251+Little+Falls+Dr,+Wilmington,+DE+19808/@39.7611519,-75.6252365,17z/data=!3m1!4b1!4m6!3m5!1s0x89c6fe75d85ed30f:0xac3eff6665d8aeb2!8m2!3d39.7611478!4d-75.6226616!16s%2Fg%2F11dyp2bhc8?entry=ttu&g_ep=EgoyMDI1MDczMC4wIKXMDSoASAFQAw%3D%3D',
+      '_blank'
+    );
   }, []);
 
   const contactExecutive = useCallback((name: string, title: string) => {
@@ -173,51 +216,56 @@ export default function ContactPage() {
       {/* Calendly script (for inline widget) */}
       <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
 
-      {/* Re:amaze loader */}
-      <Script
-        id="reamaze-loader"
-        src="https://cdn.reamaze.com/assets/reamaze-loader.js"
-        strategy="afterInteractive"
-      />
-      {/* Re:amaze configuration (your exact snippet) */}
+      {/* Re:amaze configuration (YOUR UPDATED SNIPPET) — placed before loader */}
       <Script
         id="reamaze-config"
         strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: `
-            window._support = window._support || { ui: {}, user: {} };
-            window._support['account'] = '3a97c9a9-f790-4f20-bc02-77632e9c9355';
-            window._support['ui']['contactMode'] = 'mixed';
-            window._support['ui']['enableKb'] = 'true';
-            window._support['ui']['mailbox'] = '60800917';
-            window._support['ui']['styles'] = {
-              widgetColor: '2043a0',
+            var _support = window._support || { 'ui': {}, 'user': {} };
+            _support['account'] = '3a97c9a9-f790-4f20-bc02-77632e9c9355';
+            _support['ui']['contactMode'] = 'mixed';
+            _support['ui']['enableKb'] = 'true';
+            _support['ui']['mailbox'] = '60800917';
+            _support['ui']['styles'] = {
+              widgetColor: '#2043a0',
               gradient: true,
             };
-            window._support['ui']['shoutboxFacesMode'] = '';
-            window._support['ui']['widget'] = {
+            _support['ui']['shoutboxFacesMode'] = '';
+            _support['ui']['widget'] = {
               allowBotProcessing: 'false',
               slug: 'safer-attendance-llc',
               label: {
-                text: 'Let us know if you have any questions! 😊',
+                text: 'Quick Answers to Common questions before you contact us.',
                 mode: "notification",
                 delay: 3,
                 duration: 30,
-                primary: '',
-                secondary: '',
+                primary: 'How quickly can we get started?',
+                primary2: 'Do you offer free trials?',
+                primary3: 'What support do you provide?',
+                primary4: 'How much does it cost?',
+                secondary: 'Something else',
                 sound: true,
               },
               position: 'bottom-right'
             };
-            window._support['ui']['overrides'] = window._support['ui']['overrides'] || {};
-            window._support['ui']['overrides']['confirmationMessage'] =
+            _support['ui']['overrides'] = _support['ui']['overrides'] || {};
+            _support['ui']['overrides']['confirmationMessage'] =
               'Your message has been received! A Safer Attendance representative will be with you shortly. Please feel free to email us at info@saferattendance.com or call us at (856) 712-9455';
-            window._support['apps'] = {
+            _support['apps'] = {
               recentConversations: {},
               faq: {"enabled": true}
             };
-          `
+            window._support = _support;
+          `,
         }}
+      />
+      {/* Re:amaze loader */}
+      <Script
+        id="reamaze-loader"
+        src="https://cdn.reamaze.com/assets/reamaze-loader.js"
+        strategy="afterInteractive"
+        onLoad={() => setReamazeReady(true)}
       />
 
       {/* Animated Background Elements */}
@@ -354,7 +402,7 @@ export default function ContactPage() {
         </div>
       </nav>
 
-      {/* Hero Section (cleaned — redundant top blocks removed) */}
+      {/* Hero Section */}
       <section className="relative py-20 lg:py-32">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center">
@@ -392,19 +440,17 @@ export default function ContactPage() {
                 </button>
               </div>
             </div>
-            {/* (Removed the hero's "Schedule Your Consultation" box + 3 quick-contact cards) */}
           </div>
         </div>
       </section>
 
-      {/* Contact Form Section (header + info box removed) */}
+      {/* Contact Form Section */}
       <section id="contact-form" className="relative py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
             {/* Left: Calendly or Form */}
             <div className="lg:col-span-2">
-              {/* Contact Form Container */}
               {activeTab === 'form' && (
                 <div id="contact-form-container">
                   <div className="rounded-3xl border border-white/20 bg-white/70 p-8 shadow-lg shadow-gray-200/50 backdrop-blur-xl lg:p-12">
@@ -580,7 +626,7 @@ export default function ContactPage() {
                           className="mt-1 h-5 w-5 rounded border-gray-300 bg-white text-brand-blue focus:ring-2 focus:ring-brand-blue/50"
                         />
                         <label htmlFor="consent" className="text-sm leading-relaxed text-gray-600">
-                          I agree to receive communications from Safer Attendance regarding my inquiry. You can unsubscribe at any time.{' '}
+                          I agree to receive communications from Safer Attendance regarding my inquiry. You can unsubscribe at any time.{` `}
                           <a href="#" className="text-brand-dark hover:underline">
                             Privacy Policy
                           </a>
@@ -746,6 +792,7 @@ export default function ContactPage() {
                     </div>
                     <button
                       onClick={startLiveChat}
+                      aria-label="Start live chat"
                       className="rounded-full bg-gradient-to-r from-brand-blue to-brand-dark p-2 text-white transition-all duration-300 hover:shadow-lg"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -811,7 +858,7 @@ export default function ContactPage() {
                     <h3 className="mb-2 text-xl font-semibold text-gray-800">Phone Support</h3>
                     <div className="space-y-2 text-gray-600">
                       <p>
-                        <strong>(856) 712-9455</strong> 
+                        <strong>(856) 712-9455</strong>
                       </p>
                     </div>
                   </div>
@@ -961,7 +1008,7 @@ export default function ContactPage() {
                 onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-purple to-purple-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
-                Contact Kira                            
+                Contact Kira
               </button>
             </div>
 
@@ -986,7 +1033,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* Quick Contact Options Section (kept here; hero duplicates removed) */}
+      {/* Quick Contact Options Section */}
       <section className="relative bg-white/30 py-20 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-16 text-center">
@@ -1012,6 +1059,7 @@ export default function ContactPage() {
 
             <button
               onClick={startLiveChat}
+              aria-label="Start live chat"
               className="group rounded-2xl border border-white/20 bg-white/70 p-6 shadow-lg shadow-gray-200/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl backdrop-blur-xl"
             >
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-blue to-brand-dark transition-transform duration-300 group-hover:scale-110">
