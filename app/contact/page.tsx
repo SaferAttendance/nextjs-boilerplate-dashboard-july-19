@@ -191,7 +191,7 @@ export default function ContactPage() {
             window._support['ui']['enableKb'] = 'true';
             window._support['ui']['mailbox'] = '60800917';
             window._support['ui']['styles'] = {
-              widgetColor: 'rgba(16, 162, 197, 1)',
+              widgetColor: '2043a0',
               gradient: true,
             };
             window._support['ui']['shoutboxFacesMode'] = '';
