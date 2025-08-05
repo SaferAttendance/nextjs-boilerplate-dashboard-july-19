@@ -2,12 +2,14 @@
 
 import React, { useState } from 'react';
 
-/* ──────────────────────────────────────────────────────────────────
-   📋  1.  EXPLANATORY PANEL
-   ----------------------------------------------------------------- */
-export function CsvInfoAlert() {
+/* ------------------------------------------------------------------ */
+/*  Small helper component that shows the “What’s in this report?”    */
+/*  explanation.  We keep it in-file so you can paste this whole file  */
+/*  directly over the existing one.                                    */
+/* ------------------------------------------------------------------ */
+function CsvInfoPanel() {
   return (
-    <section className="mb-8 rounded-xl border border-blue-100 bg-blue-50/60 p-6 text-sm leading-relaxed text-gray-800 shadow-sm">
+    <section className="mb-12 rounded-xl border border-blue-100 bg-blue-50/60 p-6 shadow-sm">
       <h2 className="mb-3 text-lg font-semibold text-blue-900">
         What’s in this report?
       </h2>
@@ -16,18 +18,15 @@ export function CsvInfoAlert() {
         <strong>You’re about to download the daily attendance export.</strong>
       </p>
 
-      <ul className="mb-6 list-disc space-y-1 pl-5">
+      <ul className="mb-6 list-disc space-y-1 pl-5 text-gray-800">
         <li>
-          Students appear <strong>in ascending order of&nbsp;Student&nbsp;ID</strong>
-          &nbsp;(smallest&nbsp;→&nbsp;largest).
+          Students appear <strong>in ascending order of Student&nbsp;ID</strong> (smallest&nbsp;→ largest).
         </li>
         <li>
           Each student’s classes are <strong>grouped together</strong> and&nbsp;
-          <strong>sorted by class&nbsp;period</strong> (Period&nbsp;1, Period&nbsp;2, …).
+          <strong>sorted&nbsp;by&nbsp;class&nbsp;period</strong> (1, 2, 3…).
         </li>
-        <li>
-          Every row contains the full raw data returned by&nbsp;Xano:
-        </li>
+        <li>Every row contains the raw columns returned by&nbsp;Xano:</li>
       </ul>
 
       <div className="overflow-auto rounded-lg border border-gray-200">
@@ -46,11 +45,11 @@ export function CsvInfoAlert() {
               ['class_name / class_id / period', 'Class details & scheduled period'],
               ['attendance_status', 'Present / Absent / Pending'],
               ['teacher_name / teacher_email', 'Instructor for the class'],
-              ['school_code / district_code', 'Location identifiers (match your login)'],
+              ['school_code / district_code', 'Location identifiers (match admin scope)'],
               ['admin_email / parent_email', 'Admin who exported & parent on file'],
               [
                 'teacher_expiration / current_sub_email / sub_claimed_class_expiration',
-                'Fields used for substitute-teacher tracking'
+                'Fields used for substitute-teacher tracking',
               ],
             ].map(([col, desc]) => (
               <tr key={col as string}>
@@ -64,17 +63,16 @@ export function CsvInfoAlert() {
         </table>
       </div>
 
-      <p className="mt-4">
-        Feel free to filter, sort, or pivot the file once you download it—
-        it’s a clean&nbsp;CSV&nbsp;export with no embedded formulas.
+      <p className="mt-4 text-gray-700">
+        Feel free to filter, sort, or pivot the file once you download it—it's a clean&nbsp;CSV export.
       </p>
     </section>
   );
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   📥  2.  DOWNLOAD BUTTON (DEFAULT EXPORT)
-   ----------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
+/*  Main download component                                            */
+/* ------------------------------------------------------------------ */
 export default function CsvDownload() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,10 +82,7 @@ export default function CsvDownload() {
     setError(null);
 
     try {
-      const res = await fetch('/api/xano/csv', {
-        method: 'GET',
-        cache: 'no-store',
-      });
+      const res = await fetch('/api/xano/csv', { method: 'GET', cache: 'no-store' });
 
       if (!res.ok) {
         const msg = await res.text();
@@ -96,14 +91,12 @@ export default function CsvDownload() {
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
-
       const a = document.createElement('a');
       a.href = url;
       a.download = 'attendance.csv';
       document.body.appendChild(a);
       a.click();
       a.remove();
-
       window.URL.revokeObjectURL(url);
     } catch (e: any) {
       setError(e?.message || 'Download failed');
@@ -113,25 +106,26 @@ export default function CsvDownload() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl text-center">
-      {/* explanation */}
-      <CsvInfoAlert />
+    <>
+      {/* Info / reference panel */}
+      <CsvInfoPanel />
 
-      {/* download button */}
-      <button
-        onClick={handleDownload}
-        disabled={loading}
-        className="bg-gradient-to-r from-brand-blue to-brand-dark text-white px-8 py-4 rounded-xl shadow-lg hover:shadow-xl hover:from-brand-dark hover:to-brand-blue disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 font-semibold"
-      >
-        {loading ? 'Generating CSV…' : 'Download Attendance CSV'}
-      </button>
+      {/* Download button + error */}
+      <div className="text-center">
+        <button
+          onClick={handleDownload}
+          disabled={loading}
+          className="bg-gradient-to-r from-brand-blue to-brand-dark text-white px-8 py-4 rounded-xl shadow-lg hover:shadow-xl hover:from-brand-dark hover:to-brand-blue disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 font-semibold"
+        >
+          {loading ? 'Generating CSV…' : 'Download Attendance CSV'}
+        </button>
 
-      {/* error state */}
-      {error && (
-        <p className="mt-4 text-sm text-red-600" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
+        {error && (
+          <p className="mt-4 text-sm text-red-600" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </>
   );
 }
