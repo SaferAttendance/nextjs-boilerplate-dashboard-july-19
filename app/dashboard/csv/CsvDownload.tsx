@@ -1,4 +1,4 @@
-'use client';
+i tried integrating it and failed, can you please fix this? 'use client';
 
 import React, { useState } from 'react';
 
