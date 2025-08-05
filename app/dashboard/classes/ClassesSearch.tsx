@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 
 /* ------------ types ------------------------------------------------------ */
-
 type ClassMatch = {
   id: string;
   name: string;
@@ -13,24 +12,22 @@ type ClassMatch = {
 };
 
 /* ------------ helpers ---------------------------------------------------- */
+const heading = (t: string) => (
+  <h3 className="mb-6 text-xl font-bold text-gray-800">{t}</h3>
+);
 
-function heading(text: string) {
-  return <h3 className="mb-6 text-xl font-bold text-gray-800">{text}</h3>;
-}
-
-/* ------------ main component -------------------------------------------- */
-
+/* ------------ component -------------------------------------------------- */
 export default function ClassesSearch() {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [matches, setMatches] = useState<ClassMatch[] | null>(null);
+  /* ui state */
+  const [query, setQuery]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [matches, setMatches]   = useState<ClassMatch[] | null>(null);
 
   const [activeClass, setActiveClass] = useState<ClassMatch | null>(null);
-  const [modal, setModal] = useState<'assign' | 'info' | null>(null);
+  const [modal, setModal]             = useState<'assign' | 'info' | null>(null);
 
   /* ---------- search ---------------------------------------------------- */
-
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -41,22 +38,29 @@ export default function ClassesSearch() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/xano/classes?q=${encodeURIComponent(q)}`, {
-        cache: 'no-store',
+      const r  = await fetch(`/api/xano/classes?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
+      const js = await r.json();
+      if (!r.ok) throw new Error(js?.error || `Failed (${r.status})`);
+
+      /* ---- collapse rows by class_id ---------------------------------- */
+      const rows: any[] = Array.isArray(js) ? js : js?.records;
+      const byId = new Map<string, ClassMatch>();
+
+      rows?.forEach((row) => {
+        const id = row.class_id || row.id;
+        if (!id) return;
+        if (!byId.has(id)) {
+          byId.set(id, {
+            id,
+            name:          row.class_name || 'Class',
+            period:        row.period,
+            teacher_email: row.teacher_email || '',
+            teacher_name:  row.teacher_name,
+          });
+        }
       });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
 
-      const rows: any[] = Array.isArray(payload) ? payload : payload?.records;
-      const list: ClassMatch[] =
-        rows?.map((r) => ({
-          id: r.class_id || r.id || '',
-          name: r.class_name || 'Class',
-          period: r.period,
-          teacher_email: r.teacher_email || '',
-          teacher_name: r.teacher_name,
-        })) || [];
-
+      const list = Array.from(byId.values());
       setMatches(list);
       if (!list.length) setError('No class found');
     } catch (e: any) {
@@ -67,10 +71,9 @@ export default function ClassesSearch() {
   }
 
   /* ---------- substitute assign flow ----------------------------------- */
-
   const [subEmail, setSubEmail] = useState('');
-  const [subBusy, setSubBusy] = useState(false);
-  const [subMsg, setSubMsg] = useState<string | null>(null);
+  const [subBusy,  setSubBusy]  = useState(false);
+  const [subMsg,   setSubMsg]   = useState<string | null>(null);
 
   async function submitSubstitute() {
     if (!activeClass) return;
@@ -80,21 +83,20 @@ export default function ClassesSearch() {
     setSubBusy(true);
     setSubMsg(null);
     try {
-      /* Build GET URL with 5 front-end parameters ----------------------- */
       const url = new URL('/api/xano/assign-sub', window.location.origin);
       Object.entries({
-        sub_email: email,
+        sub_email:     email,
         teacher_email: activeClass.teacher_email,
-        class_id: activeClass.id,
-        class_name: activeClass.name,
-        period: String(activeClass.period ?? ''),
+        class_id:      activeClass.id,
+        class_name:    activeClass.name,
+        period:        String(activeClass.period ?? ''),
       }).forEach(([k, v]) => url.searchParams.set(k, v));
 
-      const res   = await fetch(url.toString(), { cache: 'no-store' });
-      const text  = await res.text();                 // Xano may return ''
-      const json  = text ? JSON.parse(text) : null;
+      const res  = await fetch(url.toString(), { cache: 'no-store' });
+      const text = await res.text();
+      const js   = text ? JSON.parse(text) : null;
 
-      if (!res.ok) throw new Error(json?.error || text || `Failed (${res.status})`);
+      if (!res.ok) throw new Error(js?.error || text || `Failed (${res.status})`);
       setSubMsg('Substitute assigned successfully ✔');
     } catch (e: any) {
       setSubMsg(e?.message || 'Failed to assign substitute');
@@ -104,26 +106,23 @@ export default function ClassesSearch() {
   }
 
   /* ---------- class-info flow ------------------------------------------ */
-
-  const [infoBusy, setInfoBusy] = useState(false);
+  const [infoBusy,  setInfoBusy]  = useState(false);
   const [infoError, setInfoError] = useState<string | null>(null);
-  const [infoRows, setInfoRows] = useState<any[] | null>(null);
+  const [infoRows,  setInfoRows]  = useState<any[] | null>(null);
 
   async function loadClassInfo(c: ClassMatch) {
     setInfoBusy(true);
     setInfoError(null);
     setInfoRows(null);
     try {
-      const url = `/api/xano/class-info?class_id=${encodeURIComponent(
-        c.id
-      )}&class_name=${encodeURIComponent(
+      const url = `/api/xano/class-info?class_id=${encodeURIComponent(c.id)}&class_name=${encodeURIComponent(
         c.name
       )}&teacher_email=${encodeURIComponent(c.teacher_email)}`;
 
       const res = await fetch(url, { cache: 'no-store' });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
-      setInfoRows(Array.isArray(payload) ? payload : payload?.records);
+      const js  = await res.json();
+      if (!res.ok) throw new Error(js?.error || `Failed (${res.status})`);
+      setInfoRows(Array.isArray(js) ? js : js?.records);
     } catch (e: any) {
       setInfoError(e?.message || 'Failed to load roster');
     } finally {
@@ -131,8 +130,7 @@ export default function ClassesSearch() {
     }
   }
 
-  /* ---------- modal wrapper -------------------------------------------- */
-
+  /* ---------- modal helpers -------------------------------------------- */
   function closeModal() {
     setModal(null);
     setActiveClass(null);
@@ -143,7 +141,6 @@ export default function ClassesSearch() {
   }
 
   /* ---------- ui -------------------------------------------------------- */
-
   return (
     <>
       {/* hero */}
@@ -158,13 +155,9 @@ export default function ClassesSearch() {
           <strong>Substitute Assignments</strong> card on the dashboard.
         </p>
 
-        {/* search bar */}
-        <form
-          onSubmit={handleSearch}
-          className="relative mx-auto flex max-w-xl items-center"
-        >
+        <form onSubmit={handleSearch} className="relative mx-auto flex max-w-xl">
           <input
-            className="w-full rounded-l-2xl border border-white/20 bg-white/90 px-6 py-4 text-lg shadow-lg backdrop-blur-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-blue"
+            className="w-full rounded-l-2xl border border-white/20 bg-white/90 px-6 py-4 text-lg shadow-lg backdrop-blur-sm focus:ring-2 focus:ring-brand-blue"
             placeholder="Enter class name or ID…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -172,7 +165,7 @@ export default function ClassesSearch() {
           <button
             type="submit"
             disabled={loading}
-            className="rounded-r-2xl bg-brand-dark px-6 py-4 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-r-2xl bg-brand-dark px-6 py-4 text-white disabled:opacity-60"
           >
             {loading ? 'Searching…' : 'Search'}
           </button>
@@ -196,12 +189,7 @@ export default function ClassesSearch() {
               <h4 className="text-xl font-bold text-gray-800">{c.name}</h4>
               <p className="text-sm text-gray-500">
                 ID&nbsp;•&nbsp;{c.id}
-                {c.period && (
-                  <>
-                    {' '}
-                    &nbsp;|&nbsp; <span className="capitalize">Period {c.period}</span>
-                  </>
-                )}
+                {c.period && <> &nbsp;|&nbsp;Period {c.period}</>}
               </p>
               <p className="mt-1 text-sm text-gray-600">
                 Teacher:&nbsp;{c.teacher_name || c.teacher_email}
@@ -210,7 +198,7 @@ export default function ClassesSearch() {
 
             <div className="flex flex-col gap-4 sm:flex-row">
               <button
-                className="rounded-xl bg-brand-dark px-6 py-3 text-white transition-opacity hover:opacity-90"
+                className="rounded-xl bg-brand-dark px-6 py-3 text-white hover:opacity-90"
                 onClick={() => {
                   setActiveClass(c);
                   setModal('assign');
@@ -219,7 +207,7 @@ export default function ClassesSearch() {
                 Assign&nbsp;Substitute
               </button>
               <button
-                className="rounded-xl border border-brand-dark px-6 py-3 text-brand-dark transition-colors hover:bg-brand-dark/10"
+                className="rounded-xl border border-brand-dark px-6 py-3 text-brand-dark hover:bg-brand-dark/10"
                 onClick={() => {
                   setActiveClass(c);
                   setModal('info');
@@ -233,7 +221,7 @@ export default function ClassesSearch() {
         ))}
       </div>
 
-      {/* ---------------------- modal overlay ---------------------------- */}
+      {/* modal */}
       {modal && activeClass && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
@@ -250,7 +238,7 @@ export default function ClassesSearch() {
               ✕
             </button>
 
-            {/* assign substitute modal */}
+            {/* assign substitute */}
             {modal === 'assign' && (
               <>
                 {heading(`Assign a Substitute for ${activeClass.name}`)}
@@ -262,7 +250,7 @@ export default function ClassesSearch() {
                 <input
                   type="email"
                   placeholder="substitute@example.com"
-                  className="mb-4 w-full rounded-xl border border-gray-200 px-4 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                  className="mb-4 w-full rounded-xl border border-gray-200 px-4 py-3 shadow-sm focus:ring-2 focus:ring-brand-blue"
                   value={subEmail}
                   onChange={(e) => setSubEmail(e.target.value)}
                 />
@@ -280,7 +268,7 @@ export default function ClassesSearch() {
                 <button
                   onClick={submitSubstitute}
                   disabled={subBusy}
-                  className="w-full rounded-xl bg-brand-dark px-6 py-3 text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl bg-brand-dark px-6 py-3 text-white disabled:opacity-60"
                 >
                   {subBusy ? 'Assigning…' : 'Assign Substitute'}
                 </button>
@@ -292,14 +280,12 @@ export default function ClassesSearch() {
               </>
             )}
 
-            {/* class-info modal */}
+            {/* class info */}
             {modal === 'info' && (
               <>
                 {heading(`Roster • ${activeClass.name}`)}
                 {infoBusy && <p>Loading roster…</p>}
-                {infoError && (
-                  <p className="text-sm text-red-600">{infoError}</p>
-                )}
+                {infoError && <p className="text-sm text-red-600">{infoError}</p>}
 
                 {infoRows && (
                   <div className="overflow-x-auto">
