@@ -1,7 +1,6 @@
-/* ------------------------------------------------------------------------
-   app/api/xano/assign-sub/route.ts
-   Proxies POST → XANO_ASSIGN_SUB_URL
----------------------------------------------------------------------------*/
+/* ------------------------------------------------------------------
+   Proxies GET → process.env.XANO_ASSIGN_SUB_URL
+   ------------------------------------------------------------------*/
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
@@ -13,16 +12,17 @@ function readCookie(req: NextRequest, name: string) {
   return typeof c === 'string' ? c : c?.value;
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   if (!XANO) {
     return NextResponse.json(
       { error: 'Missing XANO_ASSIGN_SUB_URL env var' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
-  const body = await req.json().catch(() => ({}));
+  const { searchParams } = new URL(req.url);
 
+  /* ------------ scope from cookies ------------ */
   const district_code = readCookie(req, 'district_code');
   const school_code   = readCookie(req, 'school_code');
   const admin_email   = readCookie(req, 'email') ||
@@ -31,30 +31,22 @@ export async function POST(req: NextRequest) {
   if (!district_code || !school_code || !admin_email) {
     return NextResponse.json(
       { error: 'Missing admin cookies (district / school / email)' },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
-  const payload = {
-    ...body,
-    district_code,
-    school_code,
-    admin_email,
-  };
+  /* ------------ build Xano request ------------ */
+  const url = new URL(XANO);
+  url.searchParams.set('district_code', district_code);
+  url.searchParams.set('school_code',   school_code);
+  url.searchParams.set('admin_email',   admin_email);
 
-  const res = await fetch(XANO, {
-    method : 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(process.env.XANO_API_KEY
-        ? { Authorization: `Bearer ${process.env.XANO_API_KEY}` }
-        : {}),
-    },
-    body: JSON.stringify(payload),
-    cache: 'no-store',
-  });
+  // forward everything the client sent (sub_email, class_id, …)
+  searchParams.forEach((v, k) => url.searchParams.set(k, v));
 
-  const txt = await res.text();          // Xano sometimes returns ‘‘
-  const data = txt ? JSON.parse(txt) : null;
+  const res  = await fetch(url.toString(), { cache: 'no-store' });
+  const text = await res.text();              // Xano sometimes returns ''
+  const data = text ? JSON.parse(text) : null;
+
   return NextResponse.json(data, { status: res.status });
 }
