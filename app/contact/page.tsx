@@ -868,7 +868,7 @@ export default function ContactPage() {
               <p className="mb-3 font-medium text-brand-dark">CEO</p>
               <p className="mb-4 text-sm text-gray-600">Strategic partnerships &amp; vision</p>
               <button
-                onClick={() => contactExecutive('nicholas', 'CEO')}
+                onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-brand-blue to-brand-dark py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
                 Contact Nicholas
@@ -886,7 +886,7 @@ export default function ContactPage() {
               <p className="mb-3 font-medium text-accent-emerald">CFO</p>
               <p className="mb-4 text-sm text-gray-600">Pricing &amp; financial planning</p>
               <button
-                onClick={() => contactExecutive('ashley', 'CFO')}
+                onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-emerald to-emerald-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
                 Contact Ashley
@@ -922,7 +922,7 @@ export default function ContactPage() {
               <p className="mb-3 font-medium text-accent-orange">CMO</p>
               <p className="mb-4 text-sm text-gray-600">Marketing &amp; outreach</p>
               <button
-                onClick={() => contactExecutive('eric', 'CMO')}
+                onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-orange to-orange-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
                 Contact Eric
