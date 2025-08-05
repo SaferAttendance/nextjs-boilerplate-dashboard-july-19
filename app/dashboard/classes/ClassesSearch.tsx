@@ -80,23 +80,21 @@ export default function ClassesSearch() {
     setSubBusy(true);
     setSubMsg(null);
     try {
-      const url = `/api/xano/assign-sub`;
-      const res = await fetch(url, {
-        method: 'POST',
-        body: JSON.stringify({
-          sub_email: email,
-          teacher_email: activeClass.teacher_email,
-          class_id: activeClass.id,
-          class_name: activeClass.name,
-          period: activeClass.period,
-          school_code: activeClass.school_code,
-          district_code: activeClass.district_code,
-          admin_email: activeClass.admin_email,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
+      /* Build GET URL with 5 front-end parameters ----------------------- */
+      const url = new URL('/api/xano/assign-sub', window.location.origin);
+      Object.entries({
+        sub_email: email,
+        teacher_email: activeClass.teacher_email,
+        class_id: activeClass.id,
+        class_name: activeClass.name,
+        period: String(activeClass.period ?? ''),
+      }).forEach(([k, v]) => url.searchParams.set(k, v));
+
+      const res   = await fetch(url.toString(), { cache: 'no-store' });
+      const text  = await res.text();                 // Xano may return ''
+      const json  = text ? JSON.parse(text) : null;
+
+      if (!res.ok) throw new Error(json?.error || text || `Failed (${res.status})`);
       setSubMsg('Substitute assigned successfully ✔');
     } catch (e: any) {
       setSubMsg(e?.message || 'Failed to assign substitute');
@@ -121,6 +119,7 @@ export default function ClassesSearch() {
       )}&class_name=${encodeURIComponent(
         c.name
       )}&teacher_email=${encodeURIComponent(c.teacher_email)}`;
+
       const res = await fetch(url, { cache: 'no-store' });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
@@ -153,10 +152,10 @@ export default function ClassesSearch() {
         <p className="mx-auto mb-8 max-w-2xl text-lg text-gray-600">
           Search by <strong>class name</strong> (e.g.&nbsp;“Math”) or{' '}
           <strong>class&nbsp;ID</strong> (e.g.&nbsp;“AA001”). After finding a
-          class you can either <em>view its roster / attendance</em> or{' '}
+          class you can either <em>view its roster&nbsp;/ attendance</em> or{' '}
           <em>assign a substitute teacher</em>. <br />Remember: you’ll remove
-          substitute access later from the <strong>Substitute Assignments</strong>{' '}
-          card on the dashboard.
+          substitute access later from the{' '}
+          <strong>Substitute Assignments</strong> card on the dashboard.
         </p>
 
         {/* search bar */}
@@ -241,7 +240,7 @@ export default function ClassesSearch() {
           onClick={closeModal}
         >
           <div
-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-8 shadow-2xl"
+            className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-8 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
