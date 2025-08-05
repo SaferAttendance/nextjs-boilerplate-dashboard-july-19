@@ -904,10 +904,11 @@ export default function ContactPage() {
               <p className="mb-3 font-medium text-accent-purple">CTO</p>
               <p className="mb-4 text-sm text-gray-600">Technical integrations</p>
               <button
-                onClick={() => contactExecutive('kira', 'CTO')}
+                onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-purple to-purple-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
                 Contact Kira
+              <p className="font-medium text-brand-dark">info@saferattendance.com</p>
               </button>
             </div>
 
