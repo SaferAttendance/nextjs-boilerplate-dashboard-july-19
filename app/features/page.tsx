@@ -577,7 +577,7 @@ export default function FeaturesPage() {
             <div>
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
-                <li>support@saferattendance.com</li>
+                <li>info@saferattendance.com</li>
                 <li>1-800-SAFER-01</li>
                 <li>24/7 Technical Support</li>
                 <li>Documentation</li>
