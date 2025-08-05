@@ -1451,54 +1451,137 @@ export default function Page() {
         </div>
       </section>
 
-     {/* Footer */}
+{/* Footer */}
       <footer className="relative bg-gray-900 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center space-x-4 mb-6">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-[#93BEE6] to-[#6B9BD9]">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5-7a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <div className="w-12 h-12 bg-gradient-to-br from-brand-blue to-brand-dark rounded-xl flex items-center justify-center">
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m5-7a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold">Safer Attendance</h3>
-                  <p className="text-gray-400">Ensuring safety one class at a time</p>
+                  <p className="text-gray-400">Complete School Safety Platform</p>
                 </div>
               </div>
               <p className="text-gray-400 mb-6 max-w-md">
-                Comprehensive attendance tracking with advanced safety features for educational institutions worldwide.
+                Transforming school safety through intelligent attendance
+                management, real-time communication, and emergency response
+                capabilities.
               </p>
+              <div className="flex space-x-4">
+                {/* Social buttons (placeholders) */}
+                {["twitter", "x", "linkedin"].map((key) => (
+                  <a
+                    key={key}
+                    href="#"
+                    className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-brand-blue transition-colors"
+                    aria-label={key}
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10" />
+                    </svg>
+                  </a>
+                ))}
+              </div>
             </div>
+
             <div>
-              <h4 className="text-lg font-semibold mb-4">Features</h4>
+              <h4 className="text-lg font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-gray-400">
-                <li><a href="#core-features" className="hover:text-white transition-colors duration-300">Core Features</a></li>
-                <li><a href="#advanced" className="hover:text-white transition-colors duration-300">Advanced Tools</a></li>
-                <li><a href="#integrations" className="hover:text-white transition-colors duration-300">Integrations</a></li>
-                <li><a href="#" className="hover:text-white transition-colors duration-300">Security</a></li>
+                <li>
+                  <a href="/features" className="hover:text-white transition-colors">
+                    Features
+                  </a>
+                </li>
+ <li>
+                  <a href="/about" className="hover:text-white transition-colors">
+                    About Us
+                  </a>
+                </li>
+ <li>
+                  <a href="/contact" className="hover:text-white transition-colors">
+                    Contact
+                  </a>
+                </li>
+                <li>
+                  <a href="#pricing" className="hover:text-white transition-colors">
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a href="#security" className="hover:text-white transition-colors">
+                    Security
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    Integrations
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    API
+                  </a>
+                </li>
               </ul>
             </div>
+
             <div>
               <h4 className="text-lg font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
-                <li>info@saferattendance.com</li>
-                <li>(856) 712-9455 </li>
-                <li>24/7 Technical Support</li>
-                <li>Documentation</li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    Help Center
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    Contact Us
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    Training
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    System Status
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-white transition-colors">
+                    Privacy Policy
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
+
           <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
-            <p>&copy; {new Date().getFullYear()} Safer Attendance. All rights reserved.</p>
+            <p>
+              &copy; 2024 Safer Attendance. All rights reserved. Keeping schools
+              safe, one student at a time.
+            </p>
           </div>
         </div>
       </footer>
-    </div>
-  );
-}
-
     </main>
   );
 }
+
+    
