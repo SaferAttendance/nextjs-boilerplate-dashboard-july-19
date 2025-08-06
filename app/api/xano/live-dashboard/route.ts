@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
   const rows = parseCsv(csvText);
 
   const H = {
-    id: ['student_id', 'id', 'studentid'],
+    id: ['student_id', 'studentid', 'id'], // we will REQUIRE this; no fallback to name
     name: ['student_name', 'name', 'student'],
     status: ['attendance_status', 'status', 'attendance'],
     klass: ['class_name', 'class'],
@@ -138,7 +138,7 @@ export async function GET(req: NextRequest) {
     created: ['created_at', 'timestamp', 'time', 'created'],
   };
 
-  // latest status per student by timestamp
+  // latest status per student by timestamp (STRICTLY keyed by student_id)
   type Latest = {
     ts: number;
     status: 'present' | 'absent' | 'pending' | '';
@@ -150,7 +150,9 @@ export async function GET(req: NextRequest) {
   const perStudent = new Map<string, Latest>();
 
   for (const r of rows) {
-    const id = String(pick(r, H.id) ?? pick(r, H.name) ?? Math.random()).trim();
+    const idRaw = pick(r, H.id);
+    const id = String(idRaw ?? '').trim();
+    if (!id) continue; // ignore rows without a student_id
     const ts = tsOf(r, H.created); // 0 if missing
     const status = normalizeStatus(pick(r, H.status) as string);
     const rec: Latest = {
@@ -190,9 +192,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // By default, total = all unique students (includes Pending)
-  // If you want to ignore Pending, change to: const total = present + absent;
+  // total = unique student_ids only (Pending included in the base)
   const total = perStudent.size || 0;
+  // If you want to EXCLUDE Pending from the base, swap to:
+  // const total = present + absent;
 
   const presentPct = total ? Math.round((present / total) * 100) : 0;
   const absentPct = total ? Math.round((absent / total) * 100) : 0;
