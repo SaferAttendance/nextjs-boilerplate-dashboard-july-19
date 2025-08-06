@@ -65,16 +65,14 @@ function tsOf(row: Record<string, any>, keys: string[]) {
   return Number.isFinite(t) ? t : 0;
 }
 
-// EXACT mapping to your statuses
+// EXACT mapping to your statuses (input could be "Present"/"Absent"/"Pending")
 function normalizeStatus(v?: string) {
   const s = (v || '').trim().toLowerCase();
   if (s === 'present') return 'present';
   if (s === 'absent') return 'absent';
   if (s === 'pending') return 'pending';
-  return ''; // anything else ignored
+  return ''; // unknown -> ignore
 }
-
-/* ---------- handler ---------- */
 
 export async function GET(req: NextRequest) {
   const email = readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
@@ -85,7 +83,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
   }
 
-  // Scope & cache-busters
+  // CSV: attendance snapshot + Subs list for a simple count
   const cUrl = new URL(csvUrl());
   cUrl.searchParams.set('district_code', district);
   cUrl.searchParams.set('school_code', school);
@@ -93,7 +91,7 @@ export async function GET(req: NextRequest) {
     cUrl.searchParams.set('email', email);
     cUrl.searchParams.set('admin_email', email);
   }
-  cUrl.searchParams.set('_ts', Date.now().toString());
+  cUrl.searchParams.set('_ts', Date.now().toString()); // bust caches
 
   const sUrl = new URL(subsListUrl());
   sUrl.searchParams.set('district_code', district);
@@ -104,8 +102,8 @@ export async function GET(req: NextRequest) {
   }
   sUrl.searchParams.set('_ts', Date.now().toString());
 
-  const headersCsv: HeadersInit = { Accept: 'text/csv' };
-  const headersJson: HeadersInit = { Accept: 'application/json' };
+  const headersCsv: HeadersInit = { Accept: 'text/csv', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+  const headersJson: HeadersInit = { Accept: 'application/json', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
   if (process.env.XANO_API_KEY) {
     headersCsv.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
     headersJson.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
@@ -129,7 +127,7 @@ export async function GET(req: NextRequest) {
   const rows = parseCsv(csvText);
 
   const H = {
-    id: ['student_id', 'studentid', 'id'], // we will REQUIRE this; no fallback to name
+    id: ['student_id', 'studentid', 'id'], // REQUIRED for counting; rows without get ignored
     name: ['student_name', 'name', 'student'],
     status: ['attendance_status', 'status', 'attendance'],
     klass: ['class_name', 'class'],
@@ -138,7 +136,7 @@ export async function GET(req: NextRequest) {
     created: ['created_at', 'timestamp', 'time', 'created'],
   };
 
-  // latest status per student by timestamp (STRICTLY keyed by student_id)
+  // latest status per student by timestamp (STRICT key = student_id)
   type Latest = {
     ts: number;
     status: 'present' | 'absent' | 'pending' | '';
@@ -147,14 +145,19 @@ export async function GET(req: NextRequest) {
     period?: string | number;
     teacher?: string;
   };
+
   const perStudent = new Map<string, Latest>();
+  const rankStatus = (s: Latest['status']) => (s === 'present' || s === 'absent' ? 1 : 0);
 
   for (const r of rows) {
     const idRaw = pick(r, H.id);
     const id = String(idRaw ?? '').trim();
     if (!id) continue; // ignore rows without a student_id
+
     const ts = tsOf(r, H.created); // 0 if missing
     const status = normalizeStatus(pick(r, H.status) as string);
+    if (!status) continue; // ignore unknown statuses entirely
+
     const rec: Latest = {
       ts,
       status,
@@ -163,8 +166,21 @@ export async function GET(req: NextRequest) {
       period: pick(r, H.period),
       teacher: pick(r, H.teacher),
     };
+
     const prev = perStudent.get(id);
-    if (!prev || ts >= prev.ts) perStudent.set(id, rec);
+    if (!prev) {
+      perStudent.set(id, rec);
+      continue;
+    }
+
+    // Choose the better record:
+    // 1) Higher timestamp wins
+    // 2) If timestamps tie, prefer definitive status (present/absent) over pending
+    if (ts > prev.ts) {
+      perStudent.set(id, rec);
+    } else if (ts === prev.ts && rankStatus(status) > rankStatus(prev.status)) {
+      perStudent.set(id, rec);
+    }
   }
 
   let present = 0,
@@ -192,11 +208,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // total = unique student_ids only (Pending included in the base)
+  // total = unique student_ids (Pending included in base)
   const total = perStudent.size || 0;
-  // If you want to EXCLUDE Pending from the base, swap to:
-  // const total = present + absent;
-
   const presentPct = total ? Math.round((present / total) * 100) : 0;
   const absentPct = total ? Math.round((absent / total) * 100) : 0;
 
