@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
-import LiveDashboardCard from './LiveDashboardCard'; // uses the updated card
+import LiveDashboardCard from './LiveDashboardCard';
 
 export const runtime = 'nodejs'; // firebase-admin needs Node runtime
 
@@ -33,7 +33,7 @@ export default async function DashboardPage() {
     redirect('/admin/login');
   }
 
-  // Prefer the cookie set by /api/session GET
+  // Prefer cookie set by /api/session GET
   let fullName =
     jar.get('full_name')?.value ||
     jar.get('fullname')?.value ||
