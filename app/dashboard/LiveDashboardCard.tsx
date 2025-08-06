@@ -50,7 +50,10 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
   const fetchLive = async () => {
     try {
       setError(null);
-      const res = await fetch('/api/xano/live-dashboard', { cache: 'no-store' });
+      const res = await fetch('/api/xano/live-dashboard', {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-store' },
+      });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
       setData(payload);
@@ -70,17 +73,13 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
 
   const total = data?.total ?? (data ? data.present + data.absent : 0);
   const presentPct = data?.presentPct ?? (total ? Math.round((data!.present / total) * 100) : 0);
-  const absentPct  = data?.absentPct  ?? (total ? Math.round((data!.absent  / total) * 100) : 0);
+  const absentPct = data?.absentPct ?? (total ? Math.round((data!.absent / total) * 100) : 0);
 
   const startEmergency = async () => {
-    // Placeholder; wire to /api/xano/emergency/start when available
+    // Placeholder; wire this to a real Xano endpoint when available.
     try {
       setBusy(true);
       alert('Emergency Protocol triggered (placeholder).');
-      // const r = await fetch('/api/xano/emergency/start', { method: 'POST' });
-      // const payload = await r.json();
-      // if (!r.ok) throw new Error(payload?.error || 'Failed to start emergency');
-      // // optional: refresh live card or route user to incident dashboard
     } catch (e: any) {
       alert(e?.message || 'Failed to start emergency');
     } finally {
@@ -113,6 +112,7 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             <p className="text-xs text-gray-500">Present %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : `${presentPct}%`}</p>
           </div>
+
           <button
             className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
             onClick={() => !loading && setShowAbsent(true)}
@@ -129,13 +129,14 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             <p className="text-xs text-gray-500">Substitute Teachers</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : data?.subsCount ?? 0}</p>
           </div>
+
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Absent (count)</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : data?.absent ?? 0}</p>
           </div>
         </div>
 
-        {/* Activity (top 2) */}
+        {/* Activity */}
         <div className="mb-4">
           <h4 className="mb-2 text-xs font-semibold text-gray-700">Recent Activity</h4>
           <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
@@ -148,7 +149,10 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             {!loading &&
               !error &&
               (data?.activity || []).slice(0, 2).map((a) => (
-                <div key={String(a.id ?? `${a.title}-${a.created_at}`)} className="flex items-center justify-between px-3 py-3">
+                <div
+                  key={String(a.id ?? `${a.title}-${a.created_at}`)}
+                  className="flex items-center justify-between px-3 py-3"
+                >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-gray-900">{a.title}</p>
                     {a.detail && <p className="truncate text-xs text-gray-500">{a.detail}</p>}
@@ -204,7 +208,9 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
                   <li key={`${s.id ?? i}`} className="py-3">
                     <p className="text-sm font-medium text-gray-900">{s.name || '—'}</p>
                     <p className="text-xs text-gray-500">
-                      {[s.class, s.period ? `Period ${s.period}` : '', s.teacher].filter(Boolean).join(' • ')}
+                      {[s.class, s.period ? `Period ${s.period}` : '', s.teacher]
+                        .filter(Boolean)
+                        .join(' • ')}
                     </p>
                   </li>
                 ))}
