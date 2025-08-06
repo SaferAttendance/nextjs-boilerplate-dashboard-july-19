@@ -61,10 +61,10 @@ export default async function DashboardPage() {
         const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
         fullName = String(
           record?.full_name ||
-          record?.fullname ||
-          record?.fullName ||
-          record?.name ||
-          fullName
+            record?.fullname ||
+            record?.fullName ||
+            record?.name ||
+            fullName
         );
       }
     } catch {
@@ -233,7 +233,7 @@ export default async function DashboardPage() {
           </Link>
 
           {/* Live Dashboard (fills the bottom-right empty spot on lg screens) */}
-          <LiveDashboardCard />
+          <LiveDashboardCard pollMs={5000} />
         </div>
       </section>
     </main>
