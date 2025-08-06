@@ -574,11 +574,13 @@ export default function TeachersSearch() {
                 >
                   View Attendance Records
                 </button>
+                {/* NEW: Refresh button that re-calls the API */}
                 <button
-                  className="flex-1 bg-gradient-to-r from-green-400 to-green-600 text-white py-3 px-4 rounded-xl hover:from-green-500 hover:to-green-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
-                  onClick={() => alert('Opening attendance taking interface...')}
+                  className="flex-1 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 py-3 px-4 rounded-xl hover:from-gray-200 hover:to-gray-300 transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
+                  onClick={viewAttendanceRecords}
+                  disabled={recordsLoading}
                 >
-                  Take Attendance
+                  {recordsLoading ? 'Refreshing…' : 'Refresh for latest updates'}
                 </button>
               </div>
 
