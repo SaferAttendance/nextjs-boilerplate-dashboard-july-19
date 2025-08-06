@@ -1047,7 +1047,7 @@ export default function Page() {
                 </h3>
                 <p className="text-gray-600 mb-4">Perfect for small schools</p>
                 <div className="text-4xl font-bold text-gray-900 mb-2">
-                  $2.99
+                  $7.99
                 </div>
                 <div className="text-gray-600">per student/month</div>
                 <div className="text-sm text-gray-500 mt-2">
@@ -1104,7 +1104,7 @@ export default function Page() {
                 </h3>
                 <p className="text-gray-600 mb-4">Ideal for most schools</p>
                 <div className="text-4xl font-bold text-gray-900 mb-2">
-                  $1.99
+                  $6.99
                 </div>
                 <div className="text-gray-600">per student/month</div>
                 <div className="text-sm text-gray-500 mt-2">
