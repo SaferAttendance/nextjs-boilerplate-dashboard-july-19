@@ -20,9 +20,9 @@ type AbsentStudent = {
 type LivePayload = {
   present: number;
   absent: number;
-  total?: number;
-  presentPct?: number;
-  absentPct?: number;
+  total?: number;           // unique student_id count from API
+  presentPct?: number;      // based on unique IDs
+  absentPct?: number;       // based on unique IDs
   subsCount?: number;
   absent_students?: AbsentStudent[];
   timestamp?: number | string | null;
