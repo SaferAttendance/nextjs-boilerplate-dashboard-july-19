@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
+import LiveDashboardCard from './LiveDashboardCard'; // NEW
 
 export const runtime = 'nodejs'; // firebase-admin needs Node runtime
 
@@ -230,6 +231,9 @@ export default async function DashboardPage() {
               </svg>
             </div>
           </Link>
+
+          {/* Live Dashboard (fills the bottom-right empty spot on lg screens) */}
+          <LiveDashboardCard />
         </div>
       </section>
     </main>
