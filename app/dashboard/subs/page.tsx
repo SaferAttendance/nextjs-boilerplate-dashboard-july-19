@@ -2,12 +2,9 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import AdminSubAssignments from './AdminSubAssignments'; // ⬅️ direct import (client component has "use client")
 
 export const runtime = 'nodejs';
-
-// Dynamic to ensure client component stays client-only
-const AdminSubAssignments = dynamic(() => import('./AdminSubAssignments'), { ssr: false });
 
 export default async function SubsPage() {
   const jar = await cookies();
