@@ -8,107 +8,124 @@ function readCookie(req: NextRequest, name: string): string | undefined {
   return typeof c === 'string' ? c : c?.value;
 }
 
-function endpoint() {
-  // We’ll derive live numbers from the existing Admin_Student_Search
-  // You already have this env var set.
+// Existing students search
+function studentsSearchUrl() {
   return (process.env.XANO_STUDENTS_SEARCH_URL ||
     `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
       .replace(/\/$/, '')}/Admin_Student_Search`).replace(/\/$/, '');
 }
 
+// Sub assignments list (you have this var)
+function subsListUrl() {
+  return (process.env.XANO_ADMIN_SUBS_LIST_URL ||
+    `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+      .replace(/\/$/, '')}/adminSubAssignmentsList`).replace(/\/$/, '');
+}
+
 function isToday(ts?: number | string | null) {
   if (ts == null) return false;
-  const d = typeof ts === 'number' ? new Date(ts * (ts < 2e10 ? 1000 : 1)) : new Date(String(ts));
+  const n = Number(ts);
+  const d = Number.isFinite(n) ? new Date(n < 2e10 ? n * 1000 : n) : new Date(String(ts));
   const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
+  return d.getFullYear() === now.getFullYear() &&
+         d.getMonth() === now.getMonth() &&
+         d.getDate() === now.getDate();
 }
 
 export async function GET(req: NextRequest) {
-  // scope from cookies (same pattern as your other routes)
   const email = readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
   const district = readCookie(req, 'district_code');
-  const school = readCookie(req, 'school_code');
+  const school   = readCookie(req, 'school_code');
 
   if (!district || !school) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
   }
 
-  const url = new URL(endpoint());
-  url.searchParams.set('district_code', district);
-  url.searchParams.set('school_code', school);
-  if (email) {
-    url.searchParams.set('email', email);
-    url.searchParams.set('admin_email', email);
-  }
-  // optional hints some Xano flows accept; harmless if ignored
-  url.searchParams.set('limit', '500');
-  url.searchParams.set('only_today', '1');
-
   const headers: HeadersInit = { Accept: 'application/json' };
   if (process.env.XANO_API_KEY) headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
 
-  const r = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
-  const payload = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    return NextResponse.json({ error: payload?.error || 'Upstream error' }, { status: r.status });
+  // Build students query
+  const sUrl = new URL(studentsSearchUrl());
+  sUrl.searchParams.set('district_code', district);
+  sUrl.searchParams.set('school_code',  school);
+  if (email) {
+    sUrl.searchParams.set('email', email);
+    sUrl.searchParams.set('admin_email', email);
+  }
+  sUrl.searchParams.set('limit', '2000');     // raise if needed
+  sUrl.searchParams.set('only_today', '1');   // harmless if ignored upstream
+
+  // Build subs list query
+  const subUrl = new URL(subsListUrl());
+  subUrl.searchParams.set('district_code', district);
+  subUrl.searchParams.set('school_code',  school);
+  if (email) {
+    subUrl.searchParams.set('email', email);
+    subUrl.searchParams.set('admin_email', email);
   }
 
-  // Normalize array
-  const items: any[] = Array.isArray(payload) ? payload : payload?.records || [];
+  const [sr, subr] = await Promise.all([
+    fetch(sUrl.toString(),  { method: 'GET', headers, cache: 'no-store' }),
+    fetch(subUrl.toString(),{ method: 'GET', headers, cache: 'no-store' }),
+  ]);
 
-  // Keep today’s rows if created_at is present; otherwise use all
-  const todays = items.filter((row) => (row?.created_at ? isToday(row.created_at) : true));
+  const studentsPayload = await sr.json().catch(() => ({}));
+  const subsPayload     = await subr.json().catch(() => ([]));
 
-  let present = 0;
-  let absent = 0;
-  const activity: Array<{
-    id?: string | number;
-    title: string;
-    detail?: string;
-    created_at?: number | string;
-    level: 'info' | 'warning' | 'critical';
-  }> = [];
+  if (!sr.ok) {
+    return NextResponse.json({ error: studentsPayload?.error || 'Upstream error' }, { status: sr.status });
+  }
 
-  for (const row of todays) {
-    const status = String(row?.attendance_status || '').trim().toLowerCase();
+  const rows: any[] = Array.isArray(studentsPayload) ? studentsPayload : studentsPayload?.records || [];
+  const todays = rows.filter(r => (r?.created_at ? isToday(r.created_at) : true));
+
+  let present = 0, absent = 0;
+  const uniqueStudents = new Set<string | number>();
+  const absent_students: Array<{ id?: string|number; name?: string; class?: string; period?: string|number; teacher?: string }> = [];
+
+  for (const r of todays) {
+    const status = String(r?.attendance_status || '').toLowerCase().trim();
+    const sid = r?.student_id ?? r?.id;
+    if (sid != null) uniqueStudents.add(sid);
     if (status === 'present') present += 1;
-    else if (status === 'absent') absent += 1;
-
-    // Build a recent-activity style feed from rows
-    const title =
-      status === 'absent'
-        ? 'Parent notification sent'
-        : status === 'present'
-        ? 'Attendance verified'
-        : 'Attendance updated';
-
-    const detailParts = [
-      row?.student_name,
-      row?.class_name,
-      row?.period ? `Period ${row.period}` : undefined,
-    ].filter(Boolean);
-
-    activity.push({
-      id: row?.id,
-      title,
-      detail: detailParts.join(' - '),
-      created_at: row?.created_at,
-      level: status === 'absent' ? 'warning' : 'info',
-    });
+    else if (status === 'absent') {
+      absent += 1;
+      absent_students.push({
+        id: sid,
+        name: r?.student_name,
+        class: r?.class_name,
+        period: r?.period,
+        teacher: r?.teacher_name,
+      });
+    }
   }
 
-  // Sort newest first and limit
-  activity.sort((a, b) => (Number(b.created_at) || 0) - (Number(a.created_at) || 0));
-  const limited = activity.slice(0, 6);
+  const total = uniqueStudents.size || present + absent || rows.length || 0;
+  const presentPct = total ? Math.round((present / total) * 100) : 0;
+  const absentPct  = total ? Math.round((absent  / total) * 100) : 0;
+
+  const subsItems: any[] = Array.isArray(subsPayload) ? subsPayload : subsPayload?.records || [];
+  // best-effort unique subs today (fallback: all returned)
+  const subsSet = new Set<string>(subsItems.map(s => (s?.substitute_email || s?.email || s?.sub_name || '').toLowerCase()).filter(Boolean));
+  const subsCount = subsSet.size;
+
+  // Minimal activity feed (keep what you already had)
+  const activity = absent_students.slice(0, 6).map(s => ({
+    id: s.id,
+    title: 'Parent notification sent',
+    detail: [s.name, s.class, s.period ? `Period ${s.period}` : ''].filter(Boolean).join(' - '),
+    created_at: Date.now(),
+  }));
 
   return NextResponse.json({
     present,
     absent,
+    total,
+    presentPct,
+    absentPct,
+    subsCount,
+    absent_students,
+    activity,
     timestamp: Date.now(),
-    activity: limited,
   });
 }
