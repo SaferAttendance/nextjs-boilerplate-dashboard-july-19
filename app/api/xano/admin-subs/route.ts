@@ -40,9 +40,8 @@ function authHeaders(): HeadersInit {
   return h;
 }
 
+// ---------- LIST: classes with substitutes (works as before) ----------
 export async function GET(req: NextRequest) {
-  // Required by Xano list endpoint:
-  // school_code, district_code, admin_email (from cookies)
   const district_code = readCookie(req, 'district_code');
   const school_code = readCookie(req, 'school_code');
   const admin_email = readCookie(req, 'email') || readCookie(req, 'admin_email');
@@ -69,18 +68,24 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data, { status: r.status });
 }
 
+// ---------- UNRESTRICT: convert our POST to Xano GET ----------
 export async function POST(req: NextRequest) {
-  // Required by Xano unrestrict endpoint:
-  // admin_email, teacher_email, sub_email, class_id, school_code, district_code, class_name
+  // Client POST body (we convert to GET for Xano)
   const body = await req.json().catch(() => ({} as any));
   const teacher_email = (body?.teacher_email || '').trim();
   const sub_email = (body?.sub_email || '').trim();
   const class_id = (body?.class_id || '').toString().trim();
   const class_name = (body?.class_name || '').toString().trim();
 
-  const district_code = readCookie(req, 'district_code');
-  const school_code = readCookie(req, 'school_code');
-  const admin_email = readCookie(req, 'email') || readCookie(req, 'admin_email');
+  // Prefer cookies; fall back to body if provided
+  const district_code =
+    readCookie(req, 'district_code') || (body?.district_code || '').trim();
+  const school_code =
+    readCookie(req, 'school_code') || (body?.school_code || '').trim();
+  const admin_email =
+    readCookie(req, 'email') ||
+    readCookie(req, 'admin_email') ||
+    (body?.admin_email || '').trim();
 
   const missing: string[] = [];
   if (!admin_email) missing.push('admin_email');
@@ -98,24 +103,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const r = await fetch(unrestrictEndpoint(), {
-    method: 'POST',
-    headers: {
-      ...authHeaders(),
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      admin_email,
-      teacher_email,
-      sub_email,
-      class_id,
-      class_name,
-      school_code,
-      district_code,
-    }),
+  // Xano endpoint is GET; pass everything as query params
+  const url = new URL(unrestrictEndpoint());
+  url.searchParams.set('admin_email', admin_email);
+  url.searchParams.set('class_id', class_id);
+  url.searchParams.set('teacher_email', teacher_email);
+  url.searchParams.set('school_code', school_code);
+  url.searchParams.set('district_code', district_code);
+  url.searchParams.set('class_name', class_name);
+  url.searchParams.set('sub_email', sub_email);
+
+  const r = await fetch(url.toString(), {
+    method: 'GET',
+    headers: authHeaders(),
     cache: 'no-store',
   });
 
-  const data = await r.json().catch(() => ({}));
+  // Be tolerant if Xano returns text
+  const text = await r.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch { data = { message: text || null }; }
+
   return NextResponse.json(data, { status: r.status });
 }
