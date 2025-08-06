@@ -29,6 +29,20 @@ type LivePayload = {
   activity: ActivityItem[];
 };
 
+/* ---------- time helpers (America/New_York) ---------- */
+
+function isActiveSchoolHoursET(d: Date = new Date()) {
+  // 06:00 <= time < 21:00 in America/New_York (i.e., stop 9pm–6am ET)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    hour: '2-digit',
+  }).formatToParts(d);
+  const hourStr = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const hour = Number(hourStr);
+  return hour >= 6 && hour < 21;
+}
+
 function timeAgo(ts?: number | string | null) {
   if (!ts) return '';
   const d = typeof ts === 'number' ? new Date(ts) : new Date(String(ts));
@@ -40,14 +54,26 @@ function timeAgo(ts?: number | string | null) {
   return `${h}h ago`;
 }
 
-export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number }) {
+/* ---------- component ---------- */
+
+export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }) {
   const [data, setData] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
-  const [busy, setBusy] = useState(false); // for emergency action
+  const [busy, setBusy] = useState(false);     // for emergency action
+  const [paused, setPaused] = useState(!isActiveSchoolHoursET()); // after-hours flag
 
   const fetchLive = async () => {
+    const allowed = isActiveSchoolHoursET();
+    setPaused(!allowed);
+
+    if (!allowed) {
+      // Do not call the API after hours—leave last known data, clear loaders.
+      setLoading(false);
+      return;
+    }
+
     try {
       setError(null);
       const res = await fetch('/api/xano/live-dashboard', {
@@ -65,7 +91,10 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
   };
 
   useEffect(() => {
+    // Initial try (will no-op if after hours)
     fetchLive();
+
+    // Poller: checks the window every pollMs; only hits API if allowed.
     const id = setInterval(fetchLive, pollMs);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,8 +130,12 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             <h3 className="text-base font-semibold text-gray-900">Live Dashboard</h3>
           </div>
           <div className="hidden sm:flex items-center space-x-2">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
-            <span className="text-xs text-gray-600">Live</span>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                paused ? 'bg-gray-300' : 'animate-pulse bg-green-400'
+              }`}
+            />
+            <span className="text-xs text-gray-600">{paused ? 'Paused' : 'Live'}</span>
           </div>
         </div>
 
@@ -110,29 +143,37 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
         <div className="mb-4 grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Present %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : `${presentPct}%`}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {loading ? '—' : `${presentPct}%`}
+            </p>
           </div>
 
           <button
             className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
-            onClick={() => !loading && setShowAbsent(true)}
+            onClick={() => !loading && !paused && setShowAbsent(true)}
           >
             <p className="text-xs text-gray-500">Absent %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : `${absentPct}%`}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {loading ? '—' : `${absentPct}%`}
+            </p>
             <p className="mt-1 text-[11px] text-gray-500">
               {loading ? '' : `${data?.absent ?? 0} student${(data?.absent ?? 0) === 1 ? '' : 's'}`}
-              {!loading && <span className="ml-1 underline">View details</span>}
+              {!loading && !paused && <span className="ml-1 underline">View details</span>}
             </p>
           </button>
 
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Substitute Teachers</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : data?.subsCount ?? 0}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {loading ? '—' : data?.subsCount ?? 0}
+            </p>
           </div>
 
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Absent (count)</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{loading ? '—' : data?.absent ?? 0}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">
+              {loading ? '—' : data?.absent ?? 0}
+            </p>
           </div>
         </div>
 
@@ -143,11 +184,12 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             {error && <div className="px-3 py-4 text-center text-xs text-red-600">{error}</div>}
             {!error && (loading || !data?.activity?.length) && (
               <div className="px-3 py-6 text-center text-xs text-gray-500">
-                {loading ? 'Loading…' : 'No recent events.'}
+                {loading ? 'Loading…' : paused ? 'Auto-refresh paused after hours.' : 'No recent events.'}
               </div>
             )}
             {!loading &&
               !error &&
+              !paused &&
               (data?.activity || []).slice(0, 2).map((a) => (
                 <div
                   key={String(a.id ?? `${a.title}-${a.created_at}`)}
@@ -176,12 +218,12 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
 
         {/* Footer */}
         <p className="mt-2 text-right text-[11px] text-gray-500">
-          Updated {timeAgo(data?.timestamp ?? Date.now())}
+          {paused ? 'Auto-refresh paused (9pm–6am ET)' : `Updated ${timeAgo(data?.timestamp ?? Date.now())}`}
         </p>
       </div>
 
       {/* Absent details modal */}
-      {showAbsent && (
+      {showAbsent && !paused && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setShowAbsent(false)}
