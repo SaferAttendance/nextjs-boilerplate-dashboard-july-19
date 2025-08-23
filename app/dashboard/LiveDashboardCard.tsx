@@ -92,6 +92,8 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const [selectedClass, setSelectedClass] = useState<ClassStats | null>(null);
   const [classStudents, setClassStudents] = useState<any[]>([]);
+  const [filteredStudents, setFilteredStudents] = useState<any[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -369,6 +371,8 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
             setSelectedPeriod(null);
             setSelectedClass(null);
             setClassStudents([]);
+            setFilteredStudents([]);
+            setStatusFilter(null);
             setSelectedStudent(null);
           }}
         >
@@ -429,6 +433,8 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                   setSelectedPeriod(null);
                   setSelectedClass(null);
                   setClassStudents([]);
+                  setFilteredStudents([]);
+                  setStatusFilter(null);
                   setSelectedStudent(null);
                 }}
                 aria-label="Close"
@@ -503,40 +509,56 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                 </h4>
                 <div className="grid grid-cols-4 gap-2 mb-4">
                   <button
-                    className="rounded-lg border border-green-200 bg-green-50 p-2 text-center hover:bg-green-100"
-                    onClick={() => {/* Filter by present */}}
+                    className={`rounded-lg border ${statusFilter === 'present' ? 'border-green-400 bg-green-100' : 'border-green-200 bg-green-50'} p-2 text-center hover:bg-green-100`}
+                    onClick={() => filterStudentsByStatus(statusFilter === 'present' ? null : 'present')}
                   >
                     <p className="text-xs text-green-600">Present</p>
                     <p className="text-lg font-bold text-green-700">{selectedClass.present}</p>
                   </button>
                   <button
-                    className="rounded-lg border border-red-200 bg-red-50 p-2 text-center hover:bg-red-100"
-                    onClick={() => {/* Filter by absent */}}
+                    className={`rounded-lg border ${statusFilter === 'absent' ? 'border-red-400 bg-red-100' : 'border-red-200 bg-red-50'} p-2 text-center hover:bg-red-100`}
+                    onClick={() => filterStudentsByStatus(statusFilter === 'absent' ? null : 'absent')}
                   >
                     <p className="text-xs text-red-600">Absent</p>
                     <p className="text-lg font-bold text-red-700">{selectedClass.absent}</p>
                   </button>
                   <button
-                    className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center hover:bg-gray-100"
-                    onClick={() => {/* Filter by pending */}}
+                    className={`rounded-lg border ${statusFilter === 'pending' ? 'border-gray-400 bg-gray-100' : 'border-gray-200 bg-gray-50'} p-2 text-center hover:bg-gray-100`}
+                    onClick={() => filterStudentsByStatus(statusFilter === 'pending' ? null : 'pending')}
                   >
                     <p className="text-xs text-gray-600">Pending</p>
                     <p className="text-lg font-bold text-gray-700">{selectedClass.pending}</p>
                   </button>
                   <button
-                    className="rounded-lg border border-yellow-200 bg-yellow-50 p-2 text-center hover:bg-yellow-100"
-                    onClick={() => {/* Filter by late */}}
+                    className={`rounded-lg border ${statusFilter === 'late' ? 'border-yellow-400 bg-yellow-100' : 'border-yellow-200 bg-yellow-50'} p-2 text-center hover:bg-yellow-100`}
+                    onClick={() => filterStudentsByStatus(statusFilter === 'late' ? null : 'late')}
                   >
                     <p className="text-xs text-yellow-600">Late</p>
                     <p className="text-lg font-bold text-yellow-700">{selectedClass.late}</p>
                   </button>
                 </div>
                 
+                {statusFilter && (
+                  <p className="text-sm text-gray-600">
+                    Showing {statusFilter} students only. 
+                    <button 
+                      className="ml-2 text-blue-600 hover:text-blue-700"
+                      onClick={() => filterStudentsByStatus(null)}
+                    >
+                      Show all
+                    </button>
+                  </p>
+                )}
+                
                 <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-                  {classStudents.length === 0 ? (
-                    <p className="py-4 text-center text-sm text-gray-500">No students found</p>
+                  {filteredStudents.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-gray-500">
+                      {classStudents.length === 0 
+                        ? "No students found for this class" 
+                        : `No ${statusFilter} students found`}
+                    </p>
                   ) : (
-                    classStudents.map((student: any) => (
+                    filteredStudents.map((student: any) => (
                       <button
                         key={student.id || student.student_id}
                         className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
@@ -609,10 +631,20 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                         className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
                         onClick={() => {
                           setSelectedClass(cls);
-                          // Use classId if available, otherwise use className
-                          const identifier = cls.classId || cls.className;
-                          if (identifier) {
-                            fetchClassStudents(identifier, selectedPeriod);
+                          // Get students from the period stats that belong to this class
+                          const periodData = data.periodStats[selectedPeriod];
+                          if (periodData && periodData.students) {
+                            const classStudentsList = periodData.students.filter((s: any) => 
+                              s.class === cls.className || s.classId === cls.classId
+                            );
+                            setClassStudents(classStudentsList);
+                            setFilteredStudents(classStudentsList);
+                          } else {
+                            // Fallback to fetching via API
+                            const identifier = cls.classId || cls.className;
+                            if (identifier) {
+                              fetchClassStudents(identifier, selectedPeriod);
+                            }
                           }
                         }}
                       >
