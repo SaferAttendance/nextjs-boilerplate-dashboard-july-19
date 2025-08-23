@@ -154,18 +154,17 @@ export async function GET(req: NextRequest) {
   }
   
   if (detailType === 'students' && classId && period) {
-    // Get students for a specific class and period
-    // First, get the list of students in the class
-    const classUrl = new URL(classStudentsUrl());
-    classUrl.searchParams.set('district_code', district);
-    classUrl.searchParams.set('school_code', school);
-    classUrl.searchParams.set('class_id', classId);
-    classUrl.searchParams.set('period', period);
-    if (email) classUrl.searchParams.set('admin_email', email);
+    // Get students for a specific class using the class info endpoint
+    const url = new URL(classInfoUrl());
+    url.searchParams.set('district_code', district);
+    url.searchParams.set('school_code', school);
+    url.searchParams.set('class_id', classId);
+    url.searchParams.set('period', period);
+    if (email) url.searchParams.set('admin_email', email);
     
     try {
-      const classRes = await fetch(classUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
-      const classData = await classRes.json();
+      const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
+      const classData = await res.json();
       
       // Get attendance status for each student from the CSV data
       const cUrl = new URL(csvUrl());
@@ -203,8 +202,12 @@ export async function GET(req: NextRequest) {
         }
       }
       
-      // Merge attendance status with student list
-      const students = Array.isArray(classData) ? classData : classData?.students || [];
+      // Extract students from the class info response and merge with attendance
+      const students = Array.isArray(classData) ? classData : 
+                      classData?.students || 
+                      classData?.class_students || 
+                      [];
+      
       const studentsWithStatus = students.map((student: any) => ({
         ...student,
         status: attendanceMap.get(student.id || student.student_id) || 'pending'
@@ -212,18 +215,8 @@ export async function GET(req: NextRequest) {
       
       return NextResponse.json({ students: studentsWithStatus }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (e) {
-      // If the class students endpoint doesn't exist, try the student-classes endpoint
-      const studClassUrl = new URL(studentsClassesUrl());
-      studClassUrl.searchParams.set('district_code', district);
-      studClassUrl.searchParams.set('school_code', school);
-      studClassUrl.searchParams.set('class_id', classId);
-      studClassUrl.searchParams.set('period', period);
-      if (email) studClassUrl.searchParams.set('parent_email', email);
-      
-      const res = await fetch(studClassUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
-      const data = await res.json();
-      
-      return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+      console.error('Error fetching class students:', e);
+      return NextResponse.json({ students: [] }, { headers: { 'Cache-Control': 'no-store' } });
     }
   }
   
