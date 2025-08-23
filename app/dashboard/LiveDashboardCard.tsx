@@ -280,44 +280,7 @@ export default function LiveDashboardCard() {
           </button>
         </div>
 
-        {/* KPIs */}
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Present %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${presentPct}%`}
-            </p>
-          </div>
-
-          <button
-            className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
-            onClick={() => data && setShowAbsent(true)}
-            disabled={!data}
-          >
-            <p className="text-xs text-gray-500">Absent %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${absentPct}%`}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">
-              {data ? `${data.absent ?? 0} student${(data.absent ?? 0) === 1 ? '' : 's'}` : ''}
-              {data && <span className="ml-1 underline">View details</span>}
-            </p>
-          </button>
-
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Substitute Teachers</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : data?.subsCount ?? 0}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Pending/Late</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${(data?.pending ?? 0) + (data?.late ?? 0)}`}
-            </p>
-          </div>
-        </div>
+       
 
         {/* Period Breakdown Section */}
         <div className="mb-4">
