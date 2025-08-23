@@ -31,6 +31,33 @@ function subsListUrl() {
   ).replace(/\/$/, '');
 }
 
+// Class info endpoint
+function classInfoUrl() {
+  return (
+    process.env.XANO_CLASS_INFO_URL ||
+    `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+      .replace(/\/$/, '')}/class_info`
+  ).replace(/\/$/, '');
+}
+
+// Class students endpoint
+function classStudentsUrl() {
+  return (
+    process.env.XANO_CLASS_STUDENTS_URL ||
+    `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+      .replace(/\/$/, '')}/class_students`
+  ).replace(/\/$/, '');
+}
+
+// Student search endpoint
+function studentSearchUrl() {
+  return (
+    process.env.XANO_STUDENTS_SEARCH_URL ||
+    `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+      .replace(/\/$/, '')}/students_search`
+  ).replace(/\/$/, '');
+}
+
 // split by commas but ignore commas within quotes
 const SPLIT_RE = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/g;
 function parseCsv(text: string): Array<Record<string, string>> {
@@ -65,16 +92,25 @@ function tsOf(row: Record<string, any>, keys: string[]) {
   return Number.isFinite(t) ? t : 0;
 }
 
-// EXACT mapping to your statuses (input could be "Present"/"Absent"/"Pending")
+// Enhanced status mapping to include "late"
 function normalizeStatus(v?: string) {
   const s = (v || '').trim().toLowerCase();
   if (s === 'present') return 'present';
   if (s === 'absent') return 'absent';
   if (s === 'pending') return 'pending';
+  if (s === 'late' || s === 'tardy') return 'late';
   return ''; // unknown -> ignore
 }
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  
+  // Check if this is a detail request
+  const detailType = searchParams.get('detail');
+  const period = searchParams.get('period');
+  const classId = searchParams.get('classId');
+  const studentId = searchParams.get('studentId');
+  
   const email = readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
   const district = readCookie(req, 'district_code');
   const school = readCookie(req, 'school_code');
@@ -83,7 +119,60 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
   }
 
-  // CSV: attendance snapshot + Subs list for a simple count
+  const headers: HeadersInit = { 
+    Accept: 'application/json', 
+    'Cache-Control': 'no-store', 
+    Pragma: 'no-cache' 
+  };
+  
+  if (process.env.XANO_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
+  }
+
+  // Handle detail requests
+  if (detailType === 'classes' && period) {
+    // Get classes for a specific period
+    const url = new URL(classInfoUrl());
+    url.searchParams.set('district_code', district);
+    url.searchParams.set('school_code', school);
+    url.searchParams.set('period', period);
+    if (email) url.searchParams.set('admin_email', email);
+    
+    const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json();
+    
+    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+  }
+  
+  if (detailType === 'students' && classId) {
+    // Get students for a specific class
+    const url = new URL(classStudentsUrl());
+    url.searchParams.set('district_code', district);
+    url.searchParams.set('school_code', school);
+    url.searchParams.set('class_id', classId);
+    if (email) url.searchParams.set('admin_email', email);
+    
+    const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json();
+    
+    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+  }
+  
+  if (detailType === 'student' && studentId) {
+    // Get individual student details
+    const url = new URL(studentSearchUrl());
+    url.searchParams.set('district_code', district);
+    url.searchParams.set('school_code', school);
+    url.searchParams.set('student_id', studentId);
+    if (email) url.searchParams.set('admin_email', email);
+    
+    const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
+    const data = await res.json();
+    
+    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
+  // Main dashboard data
   const cUrl = new URL(csvUrl());
   cUrl.searchParams.set('district_code', district);
   cUrl.searchParams.set('school_code', school);
@@ -91,7 +180,7 @@ export async function GET(req: NextRequest) {
     cUrl.searchParams.set('email', email);
     cUrl.searchParams.set('admin_email', email);
   }
-  cUrl.searchParams.set('_ts', Date.now().toString()); // bust caches
+  cUrl.searchParams.set('_ts', Date.now().toString());
 
   const sUrl = new URL(subsListUrl());
   sUrl.searchParams.set('district_code', district);
@@ -119,7 +208,7 @@ export async function GET(req: NextRequest) {
 
   if (!csvRes.ok) {
     return NextResponse.json(
-      { error: 'Failed to fetch CSV' },
+      { error: 'Loading live data' },
       { status: csvRes.status, headers: { 'Cache-Control': 'no-store' } }
     );
   }
@@ -127,51 +216,75 @@ export async function GET(req: NextRequest) {
   const rows = parseCsv(csvText);
 
   const H = {
-    id: ['student_id', 'studentid', 'id'], // REQUIRED for counting; rows without get ignored
+    id: ['student_id', 'studentid', 'id'],
     name: ['student_name', 'name', 'student'],
     status: ['attendance_status', 'status', 'attendance'],
     klass: ['class_name', 'class'],
+    klassId: ['class_id', 'classid'],
     period: ['period'],
     teacher: ['teacher_name', 'teacher'],
     created: ['created_at', 'timestamp', 'time', 'created'],
   };
 
-  // latest status per student by timestamp (STRICT key = student_id)
   type Latest = {
     ts: number;
-    status: 'present' | 'absent' | 'pending' | '';
+    status: 'present' | 'absent' | 'pending' | 'late' | '';
     name?: string;
     class?: string;
+    classId?: string;
     period?: string | number;
     teacher?: string;
   };
 
   const perStudent = new Map<string, Latest>();
-  const rankStatus = (s: Latest['status']) => (s === 'present' || s === 'absent' ? 1 : 0);
+  const rankStatus = (s: Latest['status']) => {
+    if (s === 'present' || s === 'absent' || s === 'late') return 2;
+    if (s === 'pending') return 1;
+    return 0;
+  };
 
-  // NEW: Track attendance by period
+  // Enhanced period tracking with all statuses and class grouping
   type PeriodStats = {
     present: number;
     absent: number;
+    pending: number;
+    late: number;
     total: number;
     presentPct: number;
     absentPct: number;
+    students: Array<{
+      id: string;
+      name?: string;
+      status: string;
+      class?: string;
+      classId?: string;
+      teacher?: string;
+    }>;
+    classes: Map<string, {
+      classId?: string;
+      className: string;
+      teacher?: string;
+      present: number;
+      absent: number;
+      pending: number;
+      late: number;
+      total: number;
+    }>;
   };
   
-  const periodMap = new Map<string, Map<string, Latest>>(); // period -> studentId -> Latest
-  const PERIODS = ['1', '2', '3', '4', '5']; // 5 periods
+  const periodMap = new Map<string, Map<string, Latest>>();
+  const PERIODS = ['1', '2', '3', '4', '5'];
   
-  // Initialize period maps
   PERIODS.forEach(p => periodMap.set(p, new Map()));
 
   for (const r of rows) {
     const idRaw = pick(r, H.id);
     const id = String(idRaw ?? '').trim();
-    if (!id) continue; // ignore rows without a student_id
+    if (!id) continue;
 
-    const ts = tsOf(r, H.created); // 0 if missing
+    const ts = tsOf(r, H.created);
     const status = normalizeStatus(pick(r, H.status) as string);
-    if (!status) continue; // ignore unknown statuses entirely
+    if (!status) continue;
 
     const periodRaw = pick(r, H.period);
     const period = String(periodRaw ?? '').trim();
@@ -181,11 +294,12 @@ export async function GET(req: NextRequest) {
       status,
       name: pick(r, H.name),
       class: pick(r, H.klass),
+      classId: pick(r, H.klassId),
       period: period || periodRaw,
       teacher: pick(r, H.teacher),
     };
 
-    // Update overall attendance (most recent)
+    // Update overall attendance
     const prev = perStudent.get(id);
     if (!prev) {
       perStudent.set(id, rec);
@@ -215,8 +329,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Calculate overall stats
-  let present = 0,
-    absent = 0;
+  let present = 0, absent = 0, pending = 0, late = 0;
   const absent_students: Array<{
     id?: string;
     name?: string;
@@ -237,23 +350,60 @@ export async function GET(req: NextRequest) {
       });
     } else if (rec.status === 'present') {
       present += 1;
+    } else if (rec.status === 'pending') {
+      pending += 1;
+    } else if (rec.status === 'late') {
+      late += 1;
     }
   }
 
-  // Calculate period stats
+  // Calculate enhanced period stats with class grouping
   const periodStats: Record<string, PeriodStats> = {};
   
   PERIODS.forEach(period => {
     const periodStudents = periodMap.get(period)!;
-    let periodPresent = 0;
-    let periodAbsent = 0;
+    let periodPresent = 0, periodAbsent = 0, periodPending = 0, periodLate = 0;
+    const students: PeriodStats['students'] = [];
+    const classes = new Map<string, PeriodStats['classes'] extends Map<any, infer V> ? V : never>();
     
-    for (const [_, rec] of periodStudents.entries()) {
-      if (rec.status === 'present') {
-        periodPresent += 1;
-      } else if (rec.status === 'absent') {
-        periodAbsent += 1;
+    for (const [id, rec] of periodStudents.entries()) {
+      // Count by status
+      if (rec.status === 'present') periodPresent += 1;
+      else if (rec.status === 'absent') periodAbsent += 1;
+      else if (rec.status === 'pending') periodPending += 1;
+      else if (rec.status === 'late') periodLate += 1;
+      
+      // Add to students list
+      students.push({
+        id,
+        name: rec.name,
+        status: rec.status,
+        class: rec.class,
+        classId: rec.classId,
+        teacher: rec.teacher,
+      });
+      
+      // Group by class
+      const className = rec.class || 'Unknown';
+      if (!classes.has(className)) {
+        classes.set(className, {
+          classId: rec.classId,
+          className,
+          teacher: rec.teacher,
+          present: 0,
+          absent: 0,
+          pending: 0,
+          late: 0,
+          total: 0,
+        });
       }
+      
+      const classStats = classes.get(className)!;
+      classStats.total += 1;
+      if (rec.status === 'present') classStats.present += 1;
+      else if (rec.status === 'absent') classStats.absent += 1;
+      else if (rec.status === 'pending') classStats.pending += 1;
+      else if (rec.status === 'late') classStats.late += 1;
     }
     
     const periodTotal = periodStudents.size || 0;
@@ -261,18 +411,21 @@ export async function GET(req: NextRequest) {
     periodStats[period] = {
       present: periodPresent,
       absent: periodAbsent,
+      pending: periodPending,
+      late: periodLate,
       total: periodTotal,
       presentPct: periodTotal ? Math.round((periodPresent / periodTotal) * 100) : 0,
       absentPct: periodTotal ? Math.round((periodAbsent / periodTotal) * 100) : 0,
+      students,
+      classes,
     };
   });
 
-  // total = unique student_ids (Pending included in base)
   const total = perStudent.size || 0;
   const presentPct = total ? Math.round((present / total) * 100) : 0;
   const absentPct = total ? Math.round((absent / total) * 100) : 0;
 
-  // Subs count (unique by email/name best-effort)
+  // Subs count
   const subsItems: any[] = Array.isArray(subsPayload) ? subsPayload : subsPayload?.records || [];
   const subsSet = new Set<string>(
     subsItems
@@ -288,16 +441,27 @@ export async function GET(req: NextRequest) {
     created_at: Date.now(),
   }));
 
+  // Convert class Maps to arrays for JSON serialization
+  const periodStatsForJson: any = {};
+  for (const [period, stats] of Object.entries(periodStats)) {
+    periodStatsForJson[period] = {
+      ...stats,
+      classes: Array.from(stats.classes.values()),
+    };
+  }
+
   return NextResponse.json(
     {
       present,
       absent,
+      pending,
+      late,
       total,
       presentPct,
       absentPct,
       subsCount,
       absent_students,
-      periodStats, // NEW: Include period breakdown
+      periodStats: periodStatsForJson,
       activity,
       timestamp: Date.now(),
     },
