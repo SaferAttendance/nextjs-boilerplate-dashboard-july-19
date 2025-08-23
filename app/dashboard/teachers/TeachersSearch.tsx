@@ -143,10 +143,12 @@ export default function TeachersSearch() {
     const name = normalizeName(first.teacher_name) || 'Teacher';
     const email = (first.teacher_email ?? '').trim();
 
-    const byClass = new Map
-      string,
-      { name: string; code: string; period?: string | number; students: number }
-    >();
+    const byClass = new Map<string, { 
+      name: string; 
+      code: string; 
+      period?: string | number; 
+      students: number 
+    }>();
 
     for (const r of rows) {
       const key = r.class_id || `${r.class_name ?? ''}|${r.period ?? ''}`;
