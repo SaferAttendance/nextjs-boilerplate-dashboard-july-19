@@ -642,17 +642,25 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                         onClick={() => {
                           setSelectedClass(cls);
                           // Get students from the period stats that belong to this class
-                          const periodData = data.periodStats[selectedPeriod];
-                          if (periodData && periodData.students) {
-                            const classStudentsList = periodData.students.filter((s: any) => 
-                              s.class === cls.className || s.classId === cls.classId
-                            );
-                            setClassStudents(classStudentsList);
-                            setFilteredStudents(classStudentsList);
+                          if (data.periodStats && selectedPeriod) {
+                            const periodData = data.periodStats[selectedPeriod];
+                            if (periodData && periodData.students) {
+                              const classStudentsList = periodData.students.filter((s: any) => 
+                                s.class === cls.className || s.classId === cls.classId
+                              );
+                              setClassStudents(classStudentsList);
+                              setFilteredStudents(classStudentsList);
+                            } else {
+                              // Fallback to fetching via API
+                              const identifier = cls.classId || cls.className;
+                              if (identifier) {
+                                fetchClassStudents(identifier, selectedPeriod);
+                              }
+                            }
                           } else {
                             // Fallback to fetching via API
                             const identifier = cls.classId || cls.className;
-                            if (identifier) {
+                            if (identifier && selectedPeriod) {
                               fetchClassStudents(identifier, selectedPeriod);
                             }
                           }
