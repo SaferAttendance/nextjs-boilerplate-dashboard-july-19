@@ -17,6 +17,14 @@ type AbsentStudent = {
   teacher?: string;
 };
 
+type PeriodStats = {
+  present: number;
+  absent: number;
+  total: number;
+  presentPct: number;
+  absentPct: number;
+};
+
 type LivePayload = {
   present: number;
   absent: number;
@@ -25,6 +33,7 @@ type LivePayload = {
   absentPct?: number;       // based on unique IDs
   subsCount?: number;
   absent_students?: AbsentStudent[];
+  periodStats?: Record<string, PeriodStats>; // NEW: Period breakdown
   timestamp?: number | string | null;
   activity: ActivityItem[];
 };
@@ -68,6 +77,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
+  const [showPeriods, setShowPeriods] = useState(false); // NEW: Period modal state
   const [busy, setBusy] = useState(false);     // for emergency action
   // DEMO MODE: Always set paused to false (never paused)
   const [paused, setPaused] = useState(false); // Always active for demo
@@ -184,6 +194,46 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           </div>
         </div>
 
+        {/* Period Breakdown Section - NEW */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold text-gray-700">Period Attendance</h4>
+            <button
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              onClick={() => data?.periodStats && setShowPeriods(true)}
+              disabled={!data?.periodStats}
+            >
+              View All →
+            </button>
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {['1', '2', '3', '4', '5'].map((period) => {
+              const stats = data?.periodStats?.[period];
+              const pct = stats?.presentPct ?? 0;
+              const color = pct >= 90 ? 'bg-green-500' : pct >= 75 ? 'bg-yellow-500' : 'bg-red-500';
+              
+              return (
+                <div
+                  key={period}
+                  className="rounded-lg border border-gray-100 bg-white p-2 text-center hover:shadow-sm transition-shadow cursor-pointer"
+                  onClick={() => data?.periodStats && setShowPeriods(true)}
+                >
+                  <p className="text-[10px] text-gray-500 font-medium">Period {period}</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {loading && !stats ? '—' : `${pct}%`}
+                  </p>
+                  <div className="mt-1 h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${color} transition-all duration-300`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Activity */}
         <div className="mb-4">
           <h4 className="mb-2 text-xs font-semibold text-gray-700">Recent Activity</h4>
@@ -233,6 +283,74 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           {`Updated ${timeAgo(data?.timestamp ?? Date.now())}`}
         </p>
       </div>
+
+      {/* Period Details Modal - NEW */}
+      {showPeriods && data?.periodStats && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowPeriods(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h4 className="text-lg font-semibold text-gray-900">Period Attendance Details</h4>
+              <button
+                className="rounded-md p-2 hover:bg-gray-100"
+                onClick={() => setShowPeriods(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {['1', '2', '3', '4', '5'].map((period) => {
+                const stats = data.periodStats![period];
+                if (!stats) return null;
+                
+                const color = stats.presentPct >= 90 ? 'text-green-600' : 
+                            stats.presentPct >= 75 ? 'text-yellow-600' : 'text-red-600';
+                
+                return (
+                  <div key={period} className="rounded-lg border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-semibold text-gray-900">Period {period}</h5>
+                      <span className={`text-2xl font-bold ${color}`}>
+                        {stats.presentPct}%
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">Present</p>
+                        <p className="font-semibold text-gray-900">{stats.present}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Absent</p>
+                        <p className="font-semibold text-gray-900">{stats.absent}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Total</p>
+                        <p className="font-semibold text-gray-900">{stats.total}</p>
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          stats.presentPct >= 90 ? 'bg-green-500' : 
+                          stats.presentPct >= 75 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${stats.presentPct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Absent details modal */}
       {showAbsent && (
