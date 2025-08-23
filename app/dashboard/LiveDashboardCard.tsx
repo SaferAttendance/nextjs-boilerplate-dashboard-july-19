@@ -155,8 +155,23 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
       const res = await fetch(`/api/xano/live-dashboard?detail=student&studentId=${studentId}`, {
         cache: 'no-store',
       });
-      const student = await res.json();
-      setSelectedStudent(student);
+      const studentData = await res.json();
+      
+      // Merge the student data with class information
+      const enrichedStudent = {
+        ...studentData,
+        // Include class info from the selected class
+        class_name: selectedClass?.className,
+        class_id: selectedClass?.classId,
+        period: selectedPeriod,
+        teacher_email: selectedClass?.teacher,
+        // Include the attendance status from the filtered list if available
+        attendance_status: filteredStudents.find(s => 
+          (s.id || s.student_id) === studentId
+        )?.status || studentData.status || 'pending'
+      };
+      
+      setSelectedStudent(enrichedStudent);
     } catch (e) {
       console.error('Failed to fetch student details:', e);
     } finally {
@@ -460,53 +475,47 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
             {/* Student Detail View */}
             {selectedStudent && !detailLoading && (
               <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-gray-900">Student Information</h4>
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Name</p>
-                      <p className="font-semibold">{selectedStudent.name || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Student ID</p>
-                      <p className="font-semibold">{selectedStudent.id || selectedStudent.student_id || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Grade</p>
-                      <p className="font-semibold">{selectedStudent.grade || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Current Status</p>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        getStatusColor(selectedStudent.status || 'pending')
-                      }`}>
-                        {selectedStudent.status || 'Pending'}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Email</p>
-                      <p className="font-semibold">{selectedStudent.email || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Phone</p>
-                      <p className="font-semibold">{selectedStudent.phone || '—'}</p>
-                    </div>
+                <h4 className="text-lg font-semibold text-gray-900">
+                  {selectedClass?.className || 'Class Details'}
+                </h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Class Code</p>
+                    <p className="font-semibold text-gray-800">{selectedClass?.classId || '—'}</p>
                   </div>
-                  {selectedStudent.parent_info && (
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="text-sm text-gray-500 mb-2">Parent/Guardian Information</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500">Name</p>
-                          <p className="text-sm font-medium">{selectedStudent.parent_info.name || '—'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Contact</p>
-                          <p className="text-sm font-medium">{selectedStudent.parent_info.phone || selectedStudent.parent_info.email || '—'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Schedule</p>
+                    <p className="font-semibold text-gray-800">Period {selectedPeriod || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Teacher Email</p>
+                    <p className="font-semibold text-gray-800">{selectedClass?.teacher || selectedStudent.teacher_email || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Parent Email</p>
+                    <p className="font-semibold text-gray-800">{selectedStudent.parent_email || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">School Code</p>
+                    <p className="font-semibold text-gray-800">{selectedStudent.school_code || '0001.blueberry'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Attendance Status</p>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      getStatusColor(selectedStudent.status || selectedStudent.attendance_status || 'pending')
+                    }`}>
+                      {selectedStudent.status || selectedStudent.attendance_status || 'Pending'}
+                    </span>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Student Name</p>
+                    <p className="font-semibold text-gray-800">{selectedStudent.name || selectedStudent.student_name || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-600 mb-1">Student ID</p>
+                    <p className="font-semibold text-gray-800">{selectedStudent.id || selectedStudent.student_id || '—'}</p>
+                  </div>
                 </div>
               </div>
             )}
