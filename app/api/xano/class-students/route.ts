@@ -4,8 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 function endpoint() {
-  // If you want to set the full URL explicitly:
-  // XANO_CLASS_STUDENTS_URL=https://x8ki-.../Admin_AllStudentsFromParticularClass
   const direct = process.env.XANO_CLASS_STUDENTS_URL;
   if (direct) return direct.replace(/\/$/, '');
   
@@ -13,8 +11,10 @@ function endpoint() {
     process.env.XANO_BASE_URL ||
     process.env.NEXT_PUBLIC_XANO_BASE ||
     '';
-  // Default to your endpoint name
-  return `${base.replace(/\/$/, '')}/Admin_AllStudentsFromParticularClass`;
+  
+  // Check if there's a different endpoint name
+  const endpointName = process.env.XANO_CLASS_STUDENTS_ENDPOINT || 'Admin_AllStudentsFromParticularClass';
+  return `${base.replace(/\/$/, '')}/${endpointName}`;
 }
 
 function readCookie(req: NextRequest, name: string): string | undefined {
@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
   const classId = (searchParams.get('class_id') || '').trim();
   const teacherEmail = (searchParams.get('teacher_email') || '').trim();
   
+  console.log('Incoming params:', { classId, teacherEmail });
+  
   if (!classId || !teacherEmail) {
     return NextResponse.json(
       { error: 'Missing class_id or teacher_email' },
@@ -34,11 +36,12 @@ export async function GET(req: NextRequest) {
     );
   }
   
-  // Scope from cookies (set by /api/session GET)
   const district = readCookie(req, 'district_code');
   const school = readCookie(req, 'school_code');
   const adminEmail =
     readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
+  
+  console.log('Cookies:', { district, school, adminEmail });
   
   if (!district || !school) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
@@ -46,22 +49,27 @@ export async function GET(req: NextRequest) {
   
   const url = new URL(endpoint());
   
-  // FIXED: Using lowercase with underscores to match what likely works
-  // Try both cases to be safe - your Xano API might expect either
+  // Try the most common parameter formats
+  // Option 1: lowercase with underscores
   url.searchParams.set('teacher_email', teacherEmail);
-  url.searchParams.set('Teacher_Email', teacherEmail);  // Also try PascalCase
   url.searchParams.set('class_id', classId);
-  url.searchParams.set('Class_ID', classId);  // Also try PascalCase
+  
+  // Option 2: PascalCase (comment out if option 1 works)
+  // url.searchParams.set('Teacher_Email', teacherEmail);
+  // url.searchParams.set('Class_ID', classId);
+  
+  // Option 3: camelCase (uncomment if needed)
+  // url.searchParams.set('teacherEmail', teacherEmail);
+  // url.searchParams.set('classId', classId);
+  
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code', school);
   
-  // Optional context often useful on the backend
   if (adminEmail) {
     url.searchParams.set('admin_email', adminEmail);
     url.searchParams.set('email', adminEmail);
   }
   
-  // Add timestamp to prevent caching
   url.searchParams.set('_ts', Date.now().toString());
   
   const headers: HeadersInit = { 
@@ -74,18 +82,34 @@ export async function GET(req: NextRequest) {
     headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
   }
   
-  console.log('Fetching class students from:', url.toString()); // Debug log
+  console.log('Calling Xano URL:', url.toString());
   
-  const r = await fetch(url.toString(), {
-    method: 'GET',
-    headers,
-    cache: 'no-store',
-  });
-  
-  const data = await r.json().catch(() => ({}));
-  
-  console.log('Response status:', r.status); // Debug log
-  console.log('Response data:', data); // Debug log
-  
-  return NextResponse.json(data, { status: r.status });
+  try {
+    const r = await fetch(url.toString(), {
+      method: 'GET',
+      headers,
+      cache: 'no-store',
+    });
+    
+    const text = await r.text();
+    console.log('Raw response:', text);
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: 'Invalid JSON response', raw: text };
+    }
+    
+    console.log('Parsed response:', data);
+    console.log('Response status:', r.status);
+    
+    return NextResponse.json(data, { status: r.status });
+  } catch (error) {
+    console.error('Fetch error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch from Xano', details: String(error) },
+      { status: 500 }
+    );
+  }
 }
