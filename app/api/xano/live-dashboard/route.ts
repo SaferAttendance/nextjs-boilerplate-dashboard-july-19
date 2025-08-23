@@ -335,7 +335,13 @@ export async function GET(req: NextRequest) {
     teacher?: string;
   };
 
-  const perStudent = new Map<string, Latest>();
+  // FIXED: Track attendance PER STUDENT AND PER PERIOD
+  // This map will store the OVERALL latest status (across all periods)
+  const overallLatest = new Map<string, Latest>();
+  
+  // This map stores status PER PERIOD - key is "studentId-period"
+  const perStudentPerPeriod = new Map<string, Latest>();
+  
   const rankStatus = (s: Latest['status']) => {
     if (s === 'present' || s === 'absent' || s === 'late') return 2;
     if (s === 'pending') return 1;
@@ -371,11 +377,9 @@ export async function GET(req: NextRequest) {
     }>;
   };
   
-  const periodMap = new Map<string, Map<string, Latest>>();
   const PERIODS = ['1', '2', '3', '4', '5'];
-  
-  PERIODS.forEach(p => periodMap.set(p, new Map()));
 
+  // Process all rows
   for (const r of rows) {
     const idRaw = pick(r, H.id);
     const id = String(idRaw ?? '').trim();
@@ -398,36 +402,37 @@ export async function GET(req: NextRequest) {
       teacher: pick(r, H.teacher),
     };
 
-    // Update overall attendance
-    const prev = perStudent.get(id);
-    if (!prev) {
-      perStudent.set(id, rec);
-    } else {
-      if (ts > prev.ts) {
-        perStudent.set(id, rec);
-      } else if (ts === prev.ts && rankStatus(status) > rankStatus(prev.status)) {
-        perStudent.set(id, rec);
+    // FIXED: Track per-period attendance separately
+    if (period && PERIODS.includes(period)) {
+      const periodKey = `${id}-${period}`;
+      const prevPeriod = perStudentPerPeriod.get(periodKey);
+      
+      if (!prevPeriod) {
+        perStudentPerPeriod.set(periodKey, rec);
+      } else {
+        // Update if this record is newer or has higher priority status
+        if (ts > prevPeriod.ts) {
+          perStudentPerPeriod.set(periodKey, rec);
+        } else if (ts === prevPeriod.ts && rankStatus(status) > rankStatus(prevPeriod.status)) {
+          perStudentPerPeriod.set(periodKey, rec);
+        }
       }
     }
 
-    // Update period-specific attendance
-    if (period && periodMap.has(period)) {
-      const periodStudents = periodMap.get(period)!;
-      const prevPeriod = periodStudents.get(id);
-      
-      if (!prevPeriod) {
-        periodStudents.set(id, rec);
-      } else {
-        if (ts > prevPeriod.ts) {
-          periodStudents.set(id, rec);
-        } else if (ts === prevPeriod.ts && rankStatus(status) > rankStatus(prevPeriod.status)) {
-          periodStudents.set(id, rec);
-        }
+    // Update overall attendance (most recent across ALL periods)
+    const prevOverall = overallLatest.get(id);
+    if (!prevOverall) {
+      overallLatest.set(id, rec);
+    } else {
+      if (ts > prevOverall.ts) {
+        overallLatest.set(id, rec);
+      } else if (ts === prevOverall.ts && rankStatus(status) > rankStatus(prevOverall.status)) {
+        overallLatest.set(id, rec);
       }
     }
   }
 
-  // Calculate overall stats
+  // Calculate overall stats (based on most recent status across all periods)
   let present = 0, absent = 0, pending = 0, late = 0;
   const absent_students: Array<{
     id?: string;
@@ -437,7 +442,7 @@ export async function GET(req: NextRequest) {
     teacher?: string;
   }> = [];
 
-  for (const [id, rec] of perStudent.entries()) {
+  for (const [id, rec] of overallLatest.entries()) {
     if (rec.status === 'absent') {
       absent += 1;
       absent_students.push({
@@ -456,16 +461,23 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Calculate enhanced period stats with class grouping
+  // Calculate period-specific stats
   const periodStats: Record<string, PeriodStats> = {};
   
   PERIODS.forEach(period => {
-    const periodStudents = periodMap.get(period)!;
     let periodPresent = 0, periodAbsent = 0, periodPending = 0, periodLate = 0;
     const students: PeriodStats['students'] = [];
     const classes = new Map<string, PeriodStats['classes'] extends Map<any, infer V> ? V : never>();
+    const studentsInPeriod = new Set<string>();
     
-    for (const [id, rec] of periodStudents.entries()) {
+    // Iterate through all per-period records
+    for (const [key, rec] of perStudentPerPeriod.entries()) {
+      // Check if this record is for the current period
+      if (!key.endsWith(`-${period}`)) continue;
+      
+      const studentId = key.substring(0, key.lastIndexOf('-'));
+      studentsInPeriod.add(studentId);
+      
       // Count by status
       if (rec.status === 'present') periodPresent += 1;
       else if (rec.status === 'absent') periodAbsent += 1;
@@ -474,7 +486,7 @@ export async function GET(req: NextRequest) {
       
       // Add to students list
       students.push({
-        id,
+        id: studentId,
         name: rec.name,
         status: rec.status,
         class: rec.class,
@@ -505,7 +517,7 @@ export async function GET(req: NextRequest) {
       else if (rec.status === 'late') classStats.late += 1;
     }
     
-    const periodTotal = periodStudents.size || 0;
+    const periodTotal = studentsInPeriod.size || 0;
     
     periodStats[period] = {
       present: periodPresent,
@@ -520,7 +532,7 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const total = perStudent.size || 0;
+  const total = overallLatest.size || 0;
   const presentPct = total ? Math.round((present / total) * 100) : 0;
   const absentPct = total ? Math.round((absent / total) * 100) : 0;
 
@@ -548,6 +560,13 @@ export async function GET(req: NextRequest) {
       classes: Array.from(stats.classes.values()),
     };
   }
+
+  // Debug logging
+  console.log('Period stats:', Object.keys(periodStatsForJson).map(p => ({
+    period: p,
+    total: periodStatsForJson[p].total,
+    present: periodStatsForJson[p].present
+  })));
 
   return NextResponse.json(
     {
