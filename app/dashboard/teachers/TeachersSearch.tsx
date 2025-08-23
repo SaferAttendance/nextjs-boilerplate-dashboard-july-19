@@ -316,11 +316,7 @@ export default function TeachersSearch() {
         ? payload
         : payload?.records ?? [];
 
-      if (items.length === 0) {
-        setRecordsError('No students found for this class. Try refreshing.');
-        return;
-      }
-
+      // Always set records, even if empty
       items.sort((a, b) =>
         (a.student_name || '').localeCompare(b.student_name || '')
       );
@@ -622,59 +618,60 @@ export default function TeachersSearch() {
                   <div className="py-6 px-4 text-center text-sm text-red-600">{recordsError}</div>
                 )}
 
-                {records && !recordsLoading && records.length > 0 && (
+                {records && !recordsLoading && (
                   <>
                     <div className="px-6 pt-5 pb-3 border-b">
                       <h4 className="text-lg font-semibold text-gray-800">
                         Students in {modalClass.name} ({modalClass.code})
                       </h4>
                       <p className="text-sm text-gray-500">
-                        {records.length} record{records.length === 1 ? '' : 's'}
+                        {records.length} student{records.length === 1 ? '' : 's'} enrolled
                       </p>
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Student
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Student ID
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-100">
-                          {records.map((row) => (
-                            <tr key={row.id}>
-                              <td className="px-6 py-3 text-sm text-gray-800">
-                                {row.student_name || '—'}
-                              </td>
-                              <td className="px-6 py-3 text-sm text-gray-600">
-                                {row.student_id ?? '—'}
-                              </td>
-                              <td className="px-6 py-3 text-sm">
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(row.attendance_status)}`}
-                                >
-                                  {row.attendance_status || 'Pending'}
-                                </span>
-                              </td>
+                    
+                    {records.length === 0 ? (
+                      <div className="py-6 px-4 text-center text-sm text-gray-600">
+                        No students found for this class. Try refreshing.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Student
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Student ID
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-100">
+                            {records.map((row) => (
+                              <tr key={row.id}>
+                                <td className="px-6 py-3 text-sm text-gray-800">
+                                  {row.student_name || '—'}
+                                </td>
+                                <td className="px-6 py-3 text-sm text-gray-600">
+                                  {row.student_id ?? '—'}
+                                </td>
+                                <td className="px-6 py-3 text-sm">
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(row.attendance_status)}`}
+                                  >
+                                    {row.attendance_status || 'Pending'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </>
-                )}
-
-                {records && !recordsLoading && records.length === 0 && (
-                  <div className="py-6 px-4 text-center text-sm text-gray-600">
-                    No students found for this class. Try refreshing.
-                  </div>
                 )}
               </div>
             </div>
