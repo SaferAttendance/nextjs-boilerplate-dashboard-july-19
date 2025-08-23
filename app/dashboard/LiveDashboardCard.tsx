@@ -31,7 +31,13 @@ type LivePayload = {
 
 /* ---------- time helpers (America/New_York) ---------- */
 
+// DEMO MODE: Always returns true (always active)
 function isActiveSchoolHoursET(d: Date = new Date()) {
+  // DEMO MODE: Always return true regardless of time
+  return true;
+  
+  // Original logic commented out for demo:
+  /*
   // 06:00 <= time < 21:00 in America/New_York (i.e., stop 9pm–6am ET)
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
@@ -41,6 +47,7 @@ function isActiveSchoolHoursET(d: Date = new Date()) {
   const hourStr = parts.find((p) => p.type === 'hour')?.value ?? '00';
   const hour = Number(hourStr);
   return hour >= 6 && hour < 21;
+  */
 }
 
 function timeAgo(ts?: number | string | null) {
@@ -62,20 +69,23 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
   const [busy, setBusy] = useState(false);     // for emergency action
-  const [paused, setPaused] = useState(!isActiveSchoolHoursET()); // after-hours flag
+  // DEMO MODE: Always set paused to false (never paused)
+  const [paused, setPaused] = useState(false); // Always active for demo
 
   const fetchLive = async () => {
-    const allowed = isActiveSchoolHoursET();
-    setPaused(!allowed);
+    // DEMO MODE: Always allow fetching
+    const allowed = true; // Always true for demo
+    setPaused(false); // Never paused for demo
 
     if (!allowed) {
-      // Do not call the API after hours—leave last known data, clear loaders.
+      // This block will never execute in demo mode
       setLoading(false);
       return;
     }
 
     try {
       setError(null);
+      // XANO URL: /api/xano/live-dashboard
       const res = await fetch('/api/xano/live-dashboard', {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-store' },
@@ -84,6 +94,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
       if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
       setData(payload);
     } catch (e: any) {
+      console.error('Live dashboard fetch error:', e);
       setError(e?.message || 'Failed to load live data');
     } finally {
       setLoading(false);
@@ -91,10 +102,10 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   };
 
   useEffect(() => {
-    // Initial try (will no-op if after hours)
+    // Initial fetch
     fetchLive();
 
-    // Poller: checks the window every pollMs; only hits API if allowed.
+    // Poller: continuously fetch every pollMs
     const id = setInterval(fetchLive, pollMs);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,12 +141,8 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
             <h3 className="text-base font-semibold text-gray-900">Live Dashboard</h3>
           </div>
           <div className="hidden sm:flex items-center space-x-2">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                paused ? 'bg-gray-300' : 'animate-pulse bg-green-400'
-              }`}
-            />
-            <span className="text-xs text-gray-600">{paused ? 'Paused' : 'Live'}</span>
+            <span className="h-2 w-2 rounded-full animate-pulse bg-green-400" />
+            <span className="text-xs text-gray-600">Live</span>
           </div>
         </div>
 
@@ -144,35 +151,35 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Present %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading ? '—' : `${presentPct}%`}
+              {loading && !data ? '—' : `${presentPct}%`}
             </p>
           </div>
 
           <button
             className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
-            onClick={() => !loading && !paused && setShowAbsent(true)}
+            onClick={() => data && setShowAbsent(true)}
           >
             <p className="text-xs text-gray-500">Absent %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading ? '—' : `${absentPct}%`}
+              {loading && !data ? '—' : `${absentPct}%`}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">
-              {loading ? '' : `${data?.absent ?? 0} student${(data?.absent ?? 0) === 1 ? '' : 's'}`}
-              {!loading && !paused && <span className="ml-1 underline">View details</span>}
+              {data ? `${data.absent ?? 0} student${(data.absent ?? 0) === 1 ? '' : 's'}` : ''}
+              {data && <span className="ml-1 underline">View details</span>}
             </p>
           </button>
 
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Substitute Teachers</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading ? '—' : data?.subsCount ?? 0}
+              {loading && !data ? '—' : data?.subsCount ?? 0}
             </p>
           </div>
 
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Absent (count)</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading ? '—' : data?.absent ?? 0}
+              {loading && !data ? '—' : data?.absent ?? 0}
             </p>
           </div>
         </div>
@@ -182,15 +189,19 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           <h4 className="mb-2 text-xs font-semibold text-gray-700">Recent Activity</h4>
           <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
             {error && <div className="px-3 py-4 text-center text-xs text-red-600">{error}</div>}
-            {!error && (loading || !data?.activity?.length) && (
+            
+            {!error && loading && !data && (
+              <div className="px-3 py-6 text-center text-xs text-gray-500">Loading…</div>
+            )}
+            
+            {!error && !loading && !data?.activity?.length && (
               <div className="px-3 py-6 text-center text-xs text-gray-500">
-                {loading ? 'Loading…' : paused ? 'Auto-refresh paused after hours.' : 'No recent events.'}
+                No recent events.
               </div>
             )}
-            {!loading &&
-              !error &&
-              !paused &&
-              (data?.activity || []).slice(0, 2).map((a) => (
+            
+            {!error && data?.activity && data.activity.length > 0 && (
+              data.activity.slice(0, 2).map((a) => (
                 <div
                   key={String(a.id ?? `${a.title}-${a.created_at}`)}
                   className="flex items-center justify-between px-3 py-3"
@@ -203,7 +214,8 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                     {timeAgo(a.created_at)}
                   </span>
                 </div>
-              ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -218,12 +230,12 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
 
         {/* Footer */}
         <p className="mt-2 text-right text-[11px] text-gray-500">
-          {paused ? 'Auto-refresh paused (9pm–6am ET)' : `Updated ${timeAgo(data?.timestamp ?? Date.now())}`}
+          {`Updated ${timeAgo(data?.timestamp ?? Date.now())}`}
         </p>
       </div>
 
       {/* Absent details modal */}
-      {showAbsent && !paused && (
+      {showAbsent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={() => setShowAbsent(false)}
