@@ -200,7 +200,7 @@ export default async function DashboardPage() {
                 <path d="M17 11l2 2 4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <h3 className="text-base font-semibold text-gray-900">View and Remove Substitute Assignments</h3>
+            <h3 className="text-base font-semibold text-gray-900">Remove A Substitute Assignment</h3>
             <p className="mt-1 text-sm text-gray-600">Manage substitute teacher assignments and coverage.</p>
             <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
               Open
