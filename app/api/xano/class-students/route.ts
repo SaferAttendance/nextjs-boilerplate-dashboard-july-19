@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 function endpoint() {
-  const direct = process.env.XANO_CLASS_STUDENTS_URL;
+  const direct = process.env.XANO_CLASS_STUDENTS_URL || process.env.XANO_CLASS_INFO_URL;
   if (direct) return direct.replace(/\/$/, '');
   
   const base =
@@ -12,9 +12,8 @@ function endpoint() {
     process.env.NEXT_PUBLIC_XANO_BASE ||
     '';
   
-  // Check if there's a different endpoint name
-  const endpointName = process.env.XANO_CLASS_STUDENTS_ENDPOINT || 'Admin_AllStudentsFromParticularClass';
-  return `${base.replace(/\/$/, '')}/${endpointName}`;
+  // Use the same endpoint as the live dashboard
+  return `${base.replace(/\/$/, '')}/class_info`;  // <-- Changed this!
 }
 
 function readCookie(req: NextRequest, name: string): string | undefined {
@@ -26,8 +25,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const classId = (searchParams.get('class_id') || '').trim();
   const teacherEmail = (searchParams.get('teacher_email') || '').trim();
-  
-  console.log('Incoming params:', { classId, teacherEmail });
   
   if (!classId || !teacherEmail) {
     return NextResponse.json(
@@ -41,36 +38,33 @@ export async function GET(req: NextRequest) {
   const adminEmail =
     readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
   
-  console.log('Cookies:', { district, school, adminEmail });
-  
   if (!district || !school) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
   }
   
   const url = new URL(endpoint());
   
-  // Try the most common parameter formats
-  // Option 1: lowercase with underscores
-  url.searchParams.set('teacher_email', teacherEmail);
-  url.searchParams.set('class_id', classId);
-  
-  // Option 2: PascalCase (comment out if option 1 works)
-  // url.searchParams.set('Teacher_Email', teacherEmail);
-  // url.searchParams.set('Class_ID', classId);
-  
-  // Option 3: camelCase (uncomment if needed)
-  // url.searchParams.set('teacherEmail', teacherEmail);
-  // url.searchParams.set('classId', classId);
-  
+  // Use the same parameter names as in the live dashboard
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code', school);
   
-  if (adminEmail) {
-    url.searchParams.set('admin_email', adminEmail);
-    url.searchParams.set('email', adminEmail);
+  // Try with class_id first, then class_name (same pattern as live dashboard)
+  if (classId.match(/^\d+$/) || classId.startsWith('CLS')) {
+    url.searchParams.set('class_id', classId);
+  } else {
+    url.searchParams.set('class_name', classId);
   }
   
+  // Add teacher email parameter
+  url.searchParams.set('teacher_email', teacherEmail);
+  
+  if (adminEmail) {
+    url.searchParams.set('admin_email', adminEmail);
+  }
+  
+  // Add cache busting
   url.searchParams.set('_ts', Date.now().toString());
+  url.searchParams.set('_rand', Math.random().toString(36));
   
   const headers: HeadersInit = { 
     Accept: 'application/json',
@@ -82,8 +76,6 @@ export async function GET(req: NextRequest) {
     headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
   }
   
-  console.log('Calling Xano URL:', url.toString());
-  
   try {
     const r = await fetch(url.toString(), {
       method: 'GET',
@@ -91,24 +83,30 @@ export async function GET(req: NextRequest) {
       cache: 'no-store',
     });
     
-    const text = await r.text();
-    console.log('Raw response:', text);
+    const data = await r.json();
     
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { error: 'Invalid JSON response', raw: text };
-    }
+    // The response might be in different formats, normalize it
+    const students = Array.isArray(data) ? data : 
+                    data?.students || 
+                    data?.records || 
+                    [];
     
-    console.log('Parsed response:', data);
-    console.log('Response status:', r.status);
+    // Map the fields to match what the component expects
+    const normalizedStudents = students.map((student: any) => ({
+      id: student.id || student.student_id,
+      student_id: student.student_id || student.id,
+      student_name: student.student_name || student.name || '—',
+      attendance_status: student.attendance_status || student.status || 'pending',
+      class_name: student.class_name,
+      teacher_name: student.teacher_name,
+      // Include other fields as needed
+    }));
     
-    return NextResponse.json(data, { status: r.status });
+    return NextResponse.json(normalizedStudents, { status: r.status });
   } catch (error) {
     console.error('Fetch error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch from Xano', details: String(error) },
+      { error: 'Failed to fetch from Xano' },
       { status: 500 }
     );
   }
