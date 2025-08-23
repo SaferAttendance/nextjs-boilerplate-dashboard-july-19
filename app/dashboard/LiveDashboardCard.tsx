@@ -66,10 +66,6 @@ type LivePayload = {
 
 /* ---------- time helpers ---------- */
 
-function isActiveSchoolHoursET(d: Date = new Date()) {
-  return true; // DEMO MODE: Always active
-}
-
 function timeAgo(ts?: number | string | null) {
   if (!ts) return '';
   const d = typeof ts === 'number' ? new Date(ts) : new Date(String(ts));
@@ -83,10 +79,10 @@ function timeAgo(ts?: number | string | null) {
 
 /* ---------- component ---------- */
 
-// Changed default from 5000ms to 30000ms (30 seconds)
-export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number }) {
+export default function LiveDashboardCard() {
   const [data, setData] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
   const [showPeriods, setShowPeriods] = useState(false);
@@ -98,20 +94,16 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [paused, setPaused] = useState(false);
 
-  const fetchLive = async () => {
-    const allowed = true; // DEMO MODE
-    setPaused(false);
-
-    if (!allowed) {
-      setLoading(false);
-      return;
-    }
-
+  const fetchLive = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
-      console.log('Frontend fetching at:', new Date().toISOString());
+      console.log('Fetching live data at:', new Date().toISOString());
       
       // Add timestamp to URL to bust cache
       const res = await fetch(`/api/xano/live-dashboard?_t=${Date.now()}`, {
@@ -141,6 +133,7 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
       setError(e?.message || 'Failed to load live data');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -220,11 +213,10 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
     }
   };
 
+  // Load data on mount only
   useEffect(() => {
     fetchLive();
-    const id = setInterval(fetchLive, pollMs);
-    return () => clearInterval(id);
-  }, [pollMs]);
+  }, []);
 
   const total = data?.total ?? (data ? data.present + data.absent : 0);
   const presentPct = data?.presentPct ?? (total ? Math.round((data!.present / total) * 100) : 0);
@@ -264,10 +256,28 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
             </span>
             <h3 className="text-base font-semibold text-gray-900">Live Dashboard</h3>
           </div>
-          <div className="hidden sm:flex items-center space-x-2">
-            <span className="h-2 w-2 rounded-full animate-pulse bg-green-400" />
-            <span className="text-xs text-gray-600">Live (30s refresh)</span>
-          </div>
+          <button
+            onClick={() => fetchLive(true)}
+            disabled={refreshing}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {refreshing ? (
+              <>
+                <svg className="animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Get Live Data
+              </>
+            )}
+          </button>
         </div>
 
         {/* KPIs */}
@@ -282,6 +292,7 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
           <button
             className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
             onClick={() => data && setShowAbsent(true)}
+            disabled={!data}
           >
             <p className="text-xs text-gray-500">Absent %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
@@ -359,18 +370,16 @@ export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number 
           <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
             {error && (
               <div className="px-3 py-4 text-center">
-                <p className="text-sm text-blue-600 mb-2">{error === 'Loading live data' ? 'Loading live data' : error}</p>
-                {error === 'Loading live data' && (
-                  <button
-                    onClick={fetchLive}
-                    className="inline-flex items-center px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-                  >
-                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Refresh Live Data
-                  </button>
-                )}
+                <p className="text-sm text-red-600 mb-2">{error}</p>
+                <button
+                  onClick={() => fetchLive(true)}
+                  className="inline-flex items-center px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                >
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Try Again
+                </button>
               </div>
             )}
             
