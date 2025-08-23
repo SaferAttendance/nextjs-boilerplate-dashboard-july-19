@@ -609,11 +609,10 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                         className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
                         onClick={() => {
                           setSelectedClass(cls);
-                          if (cls.classId) {
-                            fetchClassStudents(cls.classId, selectedPeriod);
-                          } else {
-                            // If no classId, use className as ID
-                            fetchClassStudents(cls.className, selectedPeriod);
+                          // Use classId if available, otherwise use className
+                          const identifier = cls.classId || cls.className;
+                          if (identifier) {
+                            fetchClassStudents(identifier, selectedPeriod);
                           }
                         }}
                       >
