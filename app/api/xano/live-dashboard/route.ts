@@ -158,59 +158,36 @@ export async function GET(req: NextRequest) {
     const url = new URL(classInfoUrl());
     url.searchParams.set('district_code', district);
     url.searchParams.set('school_code', school);
-    url.searchParams.set('class_id', classId);
-    url.searchParams.set('period', period);
+    
+    // Try with class_id first, then class_name
+    if (classId.match(/^\d+$/) || classId.startsWith('CLS')) {
+      url.searchParams.set('class_id', classId);
+    } else {
+      url.searchParams.set('class_name', classId);
+    }
+    
+    if (period) url.searchParams.set('period', period);
     if (email) url.searchParams.set('admin_email', email);
     
     try {
       const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
       const classData = await res.json();
       
-      // Get attendance status for each student from the CSV data
-      const cUrl = new URL(csvUrl());
-      cUrl.searchParams.set('district_code', district);
-      cUrl.searchParams.set('school_code', school);
-      if (email) {
-        cUrl.searchParams.set('email', email);
-        cUrl.searchParams.set('admin_email', email);
-      }
-      
-      const headersCsv: HeadersInit = { Accept: 'text/csv', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
-      if (process.env.XANO_API_KEY) {
-        headersCsv.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
-      }
-      
-      const csvRes = await fetch(cUrl.toString(), { method: 'GET', headers: headersCsv, cache: 'no-store' });
-      const csvText = await csvRes.text();
-      const rows = parseCsv(csvText);
-      
-      // Create a map of student attendance by ID and period
-      const attendanceMap = new Map<string, string>();
-      const H = {
-        id: ['student_id', 'studentid', 'id'],
-        status: ['attendance_status', 'status', 'attendance'],
-        period: ['period'],
-      };
-      
-      for (const r of rows) {
-        const id = String(pick(r, H.id) ?? '').trim();
-        const periodVal = String(pick(r, H.period) ?? '').trim();
-        const status = normalizeStatus(pick(r, H.status) as string);
-        
-        if (id && periodVal === period && status) {
-          attendanceMap.set(id, status);
-        }
-      }
-      
-      // Extract students from the class info response and merge with attendance
+      // The XANO_CLASS_INFO_URL returns an array of students with attendance_status
       const students = Array.isArray(classData) ? classData : 
                       classData?.students || 
-                      classData?.class_students || 
+                      classData?.records || 
                       [];
       
+      // Map the attendance_status field to our status field
       const studentsWithStatus = students.map((student: any) => ({
-        ...student,
-        status: attendanceMap.get(student.id || student.student_id) || 'pending'
+        id: student.student_id || student.id,
+        student_id: student.student_id || student.id,
+        name: student.student_name || student.name || '—',
+        status: normalizeStatus(student.attendance_status) || 'pending',
+        attendance_status: student.attendance_status,
+        class: student.class_name,
+        teacher: student.teacher_name,
       }));
       
       return NextResponse.json({ students: studentsWithStatus }, { headers: { 'Cache-Control': 'no-store' } });
