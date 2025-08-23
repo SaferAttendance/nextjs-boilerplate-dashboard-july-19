@@ -195,9 +195,11 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     return () => clearInterval(id);
   }, [pollMs]);
 
-  const total = data?.total ?? (data ? data.present + data.absent : 0);
-  const presentPct = data?.presentPct ?? (total ? Math.round((data!.present / total) * 100) : 0);
-  const absentPct = data?.absentPct ?? (total ? Math.round((data!.absent / total) * 100) : 0);
+  const total = data?.total ?? 0;
+  const present = data?.present ?? 0;
+  const absent = data?.absent ?? 0;
+  const presentPct = total > 0 ? Math.round((present / total) * 100) : 0;
+  const absentPct = total > 0 ? Math.round((absent / total) * 100) : 0;
 
   const startEmergency = async () => {
     try {
@@ -244,7 +246,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           <div className="rounded-xl border border-gray-100 bg-white p-3">
             <p className="text-xs text-gray-500">Present %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${presentPct}%`}
+              {loading && !data ? '—' : `${data?.presentPct ?? 0}%`}
             </p>
           </div>
 
@@ -254,7 +256,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           >
             <p className="text-xs text-gray-500">Absent %</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${absentPct}%`}
+              {loading && !data ? '—' : `${data?.absentPct ?? 0}%`}
             </p>
             <p className="mt-1 text-[11px] text-gray-500">
               {data ? `${data.absent ?? 0} student${(data.absent ?? 0) === 1 ? '' : 's'}` : ''}
@@ -780,7 +782,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           </div>
         </div>
       )}
-        {/*test*/}
+
       {/* Absent details modal (existing) */}
       {showAbsent && (
         <div
