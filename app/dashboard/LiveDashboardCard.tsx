@@ -135,16 +135,44 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const fetchClassStudents = async (classId: string, period: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}&period=${period}`, {
+      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${encodeURIComponent(classId)}&period=${period}`, {
         cache: 'no-store',
       });
       const data = await res.json();
-      setClassStudents(Array.isArray(data) ? data : data?.students || []);
+      const students = Array.isArray(data) ? data : data?.students || [];
+      setClassStudents(students);
+      setFilteredStudents(students); // Initially show all students
+      
+      // If we have students from periodStats, use those
+      if (selectedPeriod && data?.periodStats?.[selectedPeriod]) {
+        const periodData = data.periodStats[selectedPeriod];
+        const classData = periodData.classes?.find((c: any) => 
+          c.className === classId || c.classId === classId
+        );
+        if (classData && periodData.students) {
+          const classStudentsList = periodData.students.filter((s: any) => 
+            s.class === classData.className || s.classId === classData.classId
+          );
+          setClassStudents(classStudentsList);
+          setFilteredStudents(classStudentsList);
+        }
+      }
     } catch (e) {
       console.error('Failed to fetch class students:', e);
       setClassStudents([]);
+      setFilteredStudents([]);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  // Filter students by status
+  const filterStudentsByStatus = (status: string | null) => {
+    setStatusFilter(status);
+    if (!status) {
+      setFilteredStudents(classStudents);
+    } else {
+      setFilteredStudents(classStudents.filter((s: any) => s.status === status));
     }
   };
 
@@ -179,27 +207,11 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     }
   };
 
-  // Filter students by status
-  const filterStudentsByStatus = (status: string | null) => {
-    setStatusFilter(status);
-    if (!status) {
-      setFilteredStudents(classStudents);
-    } else {
-      setFilteredStudents(classStudents.filter((s: any) => s.status === status));
-    }
-  };
-
   useEffect(() => {
     fetchLive();
     const id = setInterval(fetchLive, pollMs);
     return () => clearInterval(id);
   }, [pollMs]);
-
-  const total = data?.total ?? 0;
-  const present = data?.present ?? 0;
-  const absent = data?.absent ?? 0;
-  const presentPct = total > 0 ? Math.round((present / total) * 100) : 0;
-  const absentPct = total > 0 ? Math.round((absent / total) * 100) : 0;
 
   const startEmergency = async () => {
     try {
@@ -238,44 +250,6 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           <div className="hidden sm:flex items-center space-x-2">
             <span className="h-2 w-2 rounded-full animate-pulse bg-green-400" />
             <span className="text-xs text-gray-600">Live</span>
-          </div>
-        </div>
-
-        {/* KPIs */}
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Present %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${data?.presentPct ?? 0}%`}
-            </p>
-          </div>
-
-          <button
-            className="rounded-xl border border-gray-100 bg-white p-3 text-left hover:bg-gray-50"
-            onClick={() => data && setShowAbsent(true)}
-          >
-            <p className="text-xs text-gray-500">Absent %</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${data?.absentPct ?? 0}%`}
-            </p>
-            <p className="mt-1 text-[11px] text-gray-500">
-              {data ? `${data.absent ?? 0} student${(data.absent ?? 0) === 1 ? '' : 's'}` : ''}
-              {data && <span className="ml-1 underline">View details</span>}
-            </p>
-          </button>
-
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Substitute Teachers</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : data?.subsCount ?? 0}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Pending/Late</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : `${(data?.pending ?? 0) + (data?.late ?? 0)}`}
-            </p>
           </div>
         </div>
 
