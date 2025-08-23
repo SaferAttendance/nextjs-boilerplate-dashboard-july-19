@@ -49,6 +49,15 @@ function classStudentsUrl() {
   ).replace(/\/$/, '');
 }
 
+// Students in classes endpoint
+function studentsClassesUrl() {
+  return (
+    process.env.XANO_STUDENTS_CLASSES_URL ||
+    `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
+      .replace(/\/$/, '')}/student_classes`
+  ).replace(/\/$/, '');
+}
+
 // Student search endpoint
 function studentSearchUrl() {
   return (
@@ -144,18 +153,78 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
   }
   
-  if (detailType === 'students' && classId) {
-    // Get students for a specific class
-    const url = new URL(classStudentsUrl());
-    url.searchParams.set('district_code', district);
-    url.searchParams.set('school_code', school);
-    url.searchParams.set('class_id', classId);
-    if (email) url.searchParams.set('admin_email', email);
+  if (detailType === 'students' && classId && period) {
+    // Get students for a specific class and period
+    // First, get the list of students in the class
+    const classUrl = new URL(classStudentsUrl());
+    classUrl.searchParams.set('district_code', district);
+    classUrl.searchParams.set('school_code', school);
+    classUrl.searchParams.set('class_id', classId);
+    classUrl.searchParams.set('period', period);
+    if (email) classUrl.searchParams.set('admin_email', email);
     
-    const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
-    const data = await res.json();
-    
-    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    try {
+      const classRes = await fetch(classUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
+      const classData = await classRes.json();
+      
+      // Get attendance status for each student from the CSV data
+      const cUrl = new URL(csvUrl());
+      cUrl.searchParams.set('district_code', district);
+      cUrl.searchParams.set('school_code', school);
+      if (email) {
+        cUrl.searchParams.set('email', email);
+        cUrl.searchParams.set('admin_email', email);
+      }
+      
+      const headersCsv: HeadersInit = { Accept: 'text/csv', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+      if (process.env.XANO_API_KEY) {
+        headersCsv.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
+      }
+      
+      const csvRes = await fetch(cUrl.toString(), { method: 'GET', headers: headersCsv, cache: 'no-store' });
+      const csvText = await csvRes.text();
+      const rows = parseCsv(csvText);
+      
+      // Create a map of student attendance by ID and period
+      const attendanceMap = new Map<string, string>();
+      const H = {
+        id: ['student_id', 'studentid', 'id'],
+        status: ['attendance_status', 'status', 'attendance'],
+        period: ['period'],
+      };
+      
+      for (const r of rows) {
+        const id = String(pick(r, H.id) ?? '').trim();
+        const periodVal = String(pick(r, H.period) ?? '').trim();
+        const status = normalizeStatus(pick(r, H.status) as string);
+        
+        if (id && periodVal === period && status) {
+          attendanceMap.set(id, status);
+        }
+      }
+      
+      // Merge attendance status with student list
+      const students = Array.isArray(classData) ? classData : classData?.students || [];
+      const studentsWithStatus = students.map((student: any) => ({
+        ...student,
+        status: attendanceMap.get(student.id || student.student_id) || 'pending'
+      }));
+      
+      return NextResponse.json({ students: studentsWithStatus }, { headers: { 'Cache-Control': 'no-store' } });
+    } catch (e) {
+      // If the class students endpoint doesn't exist, try the student-classes endpoint
+      const studClassUrl = new URL(studentsClassesUrl());
+      studClassUrl.searchParams.set('district_code', district);
+      studClassUrl.searchParams.set('school_code', school);
+      studClassUrl.searchParams.set('class_id', classId);
+      studClassUrl.searchParams.set('period', period);
+      if (email) studClassUrl.searchParams.set('parent_email', email);
+      
+      const res = await fetch(studClassUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
+      const data = await res.json();
+      
+      return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    }
   }
   
   if (detailType === 'student' && studentId) {
