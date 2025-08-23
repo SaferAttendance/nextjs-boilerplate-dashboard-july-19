@@ -257,7 +257,7 @@ export default async function DashboardPage() {
 
 {/* Live Dashboard spans the full row on sm / lg */}
 <div className="sm:col-span-2 lg:col-span-3">
-  <LiveDashboardCard pollMs={5000} />
+  <LiveDashboardCard />
 </div>
 </div>
 </section>
