@@ -143,7 +143,7 @@ export default function TeachersSearch() {
     const name = normalizeName(first.teacher_name) || 'Teacher';
     const email = (first.teacher_email ?? '').trim();
 
-    const byClass = new Map<
+    const byClass = new Map
       string,
       { name: string; code: string; period?: string | number; students: number }
     >();
@@ -281,12 +281,30 @@ export default function TeachersSearch() {
     setRecords(null);
 
     try {
-      const url = `/api/xano/class-students?class_id=${encodeURIComponent(
+      // Extract period number from schedule (e.g., "Period 3" -> "3")
+      let period = '';
+      if (modalClass.schedule) {
+        const match = modalClass.schedule.match(/Period\s+(\d+)/i);
+        if (match) {
+          period = match[1];
+        }
+      }
+
+      // Build URL with period if available
+      let url = `/api/xano/class-students?class_id=${encodeURIComponent(
         modalClass.code
       )}&teacher_email=${encodeURIComponent(teacher.email)}`;
+      
+      if (period) {
+        url += `&period=${period}`;
+      }
+
+      console.log('Fetching from URL:', url); // Debug log
 
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
+
+      console.log('Response:', payload); // Debug log
 
       if (!res.ok) {
         throw new Error(payload?.error || `Failed (${res.status})`);
@@ -295,6 +313,11 @@ export default function TeachersSearch() {
       const items: StudentRow[] = Array.isArray(payload)
         ? payload
         : payload?.records ?? [];
+
+      if (items.length === 0) {
+        setRecordsError('No students found for this class. Try refreshing.');
+        return;
+      }
 
       items.sort((a, b) =>
         (a.student_name || '').localeCompare(b.student_name || '')
@@ -574,7 +597,7 @@ export default function TeachersSearch() {
                 >
                   View Attendance Records
                 </button>
-                {/* NEW: Refresh button that re-calls the API */}
+                {/* Refresh button that re-calls the API */}
                 <button
                   className="flex-1 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 py-3 px-4 rounded-xl hover:from-gray-200 hover:to-gray-300 transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
                   onClick={viewAttendanceRecords}
@@ -597,7 +620,7 @@ export default function TeachersSearch() {
                   <div className="py-6 px-4 text-center text-sm text-red-600">{recordsError}</div>
                 )}
 
-                {records && !recordsLoading && (
+                {records && !recordsLoading && records.length > 0 && (
                   <>
                     <div className="px-6 pt-5 pb-3 border-b">
                       <h4 className="text-lg font-semibold text-gray-800">
@@ -644,6 +667,12 @@ export default function TeachersSearch() {
                       </table>
                     </div>
                   </>
+                )}
+
+                {records && !recordsLoading && records.length === 0 && (
+                  <div className="py-6 px-4 text-center text-sm text-gray-600">
+                    No students found for this class. Try refreshing.
+                  </div>
                 )}
               </div>
             </div>
