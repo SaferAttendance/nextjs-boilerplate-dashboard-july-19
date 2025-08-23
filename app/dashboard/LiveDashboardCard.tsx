@@ -130,14 +130,14 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   };
 
   // Fetch class students
-  const fetchClassStudents = async (classId: string) => {
+  const fetchClassStudents = async (classId: string, period: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}`, {
+      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}&period=${period}`, {
         cache: 'no-store',
       });
-      const students = await res.json();
-      setClassStudents(Array.isArray(students) ? students : students?.students || []);
+      const data = await res.json();
+      setClassStudents(Array.isArray(data) ? data : data?.students || []);
     } catch (e) {
       console.error('Failed to fetch class students:', e);
       setClassStudents([]);
@@ -610,7 +610,10 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                         onClick={() => {
                           setSelectedClass(cls);
                           if (cls.classId) {
-                            fetchClassStudents(cls.classId);
+                            fetchClassStudents(cls.classId, selectedPeriod);
+                          } else {
+                            // If no classId, use className as ID
+                            fetchClassStudents(cls.className, selectedPeriod);
                           }
                         }}
                       >
