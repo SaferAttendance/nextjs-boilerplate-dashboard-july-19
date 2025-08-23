@@ -232,10 +232,12 @@ export default async function DashboardPage() {
             </div>
           </Link>
 
-          {/* Live Dashboard (bottom-right on lg screens) */}
-          <LiveDashboardCard pollMs={5000} />
-        </div>
-      </section>
-    </main>
-  );
+{/* Live Dashboard spans the full row on sm / lg */}
+<div className="sm:col-span-2 lg:col-span-3">
+  <LiveDashboardCard pollMs={5000} />
+</div>
+</div>
+</section>
+</main>
+);
 }
