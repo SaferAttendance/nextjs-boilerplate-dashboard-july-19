@@ -149,6 +149,21 @@ export async function GET(req: NextRequest) {
   const perStudent = new Map<string, Latest>();
   const rankStatus = (s: Latest['status']) => (s === 'present' || s === 'absent' ? 1 : 0);
 
+  // NEW: Track attendance by period
+  type PeriodStats = {
+    present: number;
+    absent: number;
+    total: number;
+    presentPct: number;
+    absentPct: number;
+  };
+  
+  const periodMap = new Map<string, Map<string, Latest>>(); // period -> studentId -> Latest
+  const PERIODS = ['1', '2', '3', '4', '5']; // 5 periods
+  
+  // Initialize period maps
+  PERIODS.forEach(p => periodMap.set(p, new Map()));
+
   for (const r of rows) {
     const idRaw = pick(r, H.id);
     const id = String(idRaw ?? '').trim();
@@ -158,31 +173,48 @@ export async function GET(req: NextRequest) {
     const status = normalizeStatus(pick(r, H.status) as string);
     if (!status) continue; // ignore unknown statuses entirely
 
+    const periodRaw = pick(r, H.period);
+    const period = String(periodRaw ?? '').trim();
+
     const rec: Latest = {
       ts,
       status,
       name: pick(r, H.name),
       class: pick(r, H.klass),
-      period: pick(r, H.period),
+      period: period || periodRaw,
       teacher: pick(r, H.teacher),
     };
 
+    // Update overall attendance (most recent)
     const prev = perStudent.get(id);
     if (!prev) {
       perStudent.set(id, rec);
-      continue;
+    } else {
+      if (ts > prev.ts) {
+        perStudent.set(id, rec);
+      } else if (ts === prev.ts && rankStatus(status) > rankStatus(prev.status)) {
+        perStudent.set(id, rec);
+      }
     }
 
-    // Choose the better record:
-    // 1) Higher timestamp wins
-    // 2) If timestamps tie, prefer definitive status (present/absent) over pending
-    if (ts > prev.ts) {
-      perStudent.set(id, rec);
-    } else if (ts === prev.ts && rankStatus(status) > rankStatus(prev.status)) {
-      perStudent.set(id, rec);
+    // Update period-specific attendance
+    if (period && periodMap.has(period)) {
+      const periodStudents = periodMap.get(period)!;
+      const prevPeriod = periodStudents.get(id);
+      
+      if (!prevPeriod) {
+        periodStudents.set(id, rec);
+      } else {
+        if (ts > prevPeriod.ts) {
+          periodStudents.set(id, rec);
+        } else if (ts === prevPeriod.ts && rankStatus(status) > rankStatus(prevPeriod.status)) {
+          periodStudents.set(id, rec);
+        }
+      }
     }
   }
 
+  // Calculate overall stats
   let present = 0,
     absent = 0;
   const absent_students: Array<{
@@ -207,6 +239,33 @@ export async function GET(req: NextRequest) {
       present += 1;
     }
   }
+
+  // Calculate period stats
+  const periodStats: Record<string, PeriodStats> = {};
+  
+  PERIODS.forEach(period => {
+    const periodStudents = periodMap.get(period)!;
+    let periodPresent = 0;
+    let periodAbsent = 0;
+    
+    for (const [_, rec] of periodStudents.entries()) {
+      if (rec.status === 'present') {
+        periodPresent += 1;
+      } else if (rec.status === 'absent') {
+        periodAbsent += 1;
+      }
+    }
+    
+    const periodTotal = periodStudents.size || 0;
+    
+    periodStats[period] = {
+      present: periodPresent,
+      absent: periodAbsent,
+      total: periodTotal,
+      presentPct: periodTotal ? Math.round((periodPresent / periodTotal) * 100) : 0,
+      absentPct: periodTotal ? Math.round((periodAbsent / periodTotal) * 100) : 0,
+    };
+  });
 
   // total = unique student_ids (Pending included in base)
   const total = perStudent.size || 0;
@@ -238,6 +297,7 @@ export async function GET(req: NextRequest) {
       absentPct,
       subsCount,
       absent_students,
+      periodStats, // NEW: Include period breakdown
       activity,
       timestamp: Date.now(),
     },
