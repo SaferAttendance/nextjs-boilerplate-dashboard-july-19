@@ -17,46 +17,57 @@ type AbsentStudent = {
   teacher?: string;
 };
 
+type ClassStats = {
+  classId?: string;
+  className: string;
+  teacher?: string;
+  present: number;
+  absent: number;
+  pending: number;
+  late: number;
+  total: number;
+};
+
+type PeriodStudent = {
+  id: string;
+  name?: string;
+  status: string;
+  class?: string;
+  classId?: string;
+  teacher?: string;
+};
+
 type PeriodStats = {
   present: number;
   absent: number;
+  pending: number;
+  late: number;
   total: number;
   presentPct: number;
   absentPct: number;
+  students: PeriodStudent[];
+  classes: ClassStats[];
 };
 
 type LivePayload = {
   present: number;
   absent: number;
-  total?: number;           // unique student_id count from API
-  presentPct?: number;      // based on unique IDs
-  absentPct?: number;       // based on unique IDs
+  pending?: number;
+  late?: number;
+  total?: number;
+  presentPct?: number;
+  absentPct?: number;
   subsCount?: number;
   absent_students?: AbsentStudent[];
-  periodStats?: Record<string, PeriodStats>; // NEW: Period breakdown
+  periodStats?: Record<string, PeriodStats>;
   timestamp?: number | string | null;
   activity: ActivityItem[];
 };
 
-/* ---------- time helpers (America/New_York) ---------- */
+/* ---------- time helpers ---------- */
 
-// DEMO MODE: Always returns true (always active)
 function isActiveSchoolHoursET(d: Date = new Date()) {
-  // DEMO MODE: Always return true regardless of time
-  return true;
-  
-  // Original logic commented out for demo:
-  /*
-  // 06:00 <= time < 21:00 in America/New_York (i.e., stop 9pm–6am ET)
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour12: false,
-    hour: '2-digit',
-  }).formatToParts(d);
-  const hourStr = parts.find((p) => p.type === 'hour')?.value ?? '00';
-  const hour = Number(hourStr);
-  return hour >= 6 && hour < 21;
-  */
+  return true; // DEMO MODE: Always active
 }
 
 function timeAgo(ts?: number | string | null) {
@@ -77,31 +88,38 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAbsent, setShowAbsent] = useState(false);
-  const [showPeriods, setShowPeriods] = useState(false); // NEW: Period modal state
-  const [busy, setBusy] = useState(false);     // for emergency action
-  // DEMO MODE: Always set paused to false (never paused)
-  const [paused, setPaused] = useState(false); // Always active for demo
+  const [showPeriods, setShowPeriods] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [selectedClass, setSelectedClass] = useState<ClassStats | null>(null);
+  const [classStudents, setClassStudents] = useState<any[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   const fetchLive = async () => {
-    // DEMO MODE: Always allow fetching
-    const allowed = true; // Always true for demo
-    setPaused(false); // Never paused for demo
+    const allowed = true; // DEMO MODE
+    setPaused(false);
 
     if (!allowed) {
-      // This block will never execute in demo mode
       setLoading(false);
       return;
     }
 
     try {
       setError(null);
-      // XANO URL: /api/xano/live-dashboard
       const res = await fetch('/api/xano/live-dashboard', {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-store' },
       });
       const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || `Failed (${res.status})`);
+      if (!res.ok) {
+        // Special handling for loading state
+        if (payload?.error === 'Loading live data') {
+          throw new Error('Loading live data');
+        }
+        throw new Error(payload?.error || `Failed (${res.status})`);
+      }
       setData(payload);
     } catch (e: any) {
       console.error('Live dashboard fetch error:', e);
@@ -111,14 +129,43 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     }
   };
 
-  useEffect(() => {
-    // Initial fetch
-    fetchLive();
+  // Fetch class students
+  const fetchClassStudents = async (classId: string) => {
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}`, {
+        cache: 'no-store',
+      });
+      const students = await res.json();
+      setClassStudents(Array.isArray(students) ? students : students?.students || []);
+    } catch (e) {
+      console.error('Failed to fetch class students:', e);
+      setClassStudents([]);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
-    // Poller: continuously fetch every pollMs
+  // Fetch individual student details
+  const fetchStudentDetails = async (studentId: string) => {
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/xano/live-dashboard?detail=student&studentId=${studentId}`, {
+        cache: 'no-store',
+      });
+      const student = await res.json();
+      setSelectedStudent(student);
+    } catch (e) {
+      console.error('Failed to fetch student details:', e);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLive();
     const id = setInterval(fetchLive, pollMs);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollMs]);
 
   const total = data?.total ?? (data ? data.present + data.absent : 0);
@@ -126,7 +173,6 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
   const absentPct = data?.absentPct ?? (total ? Math.round((data!.absent / total) * 100) : 0);
 
   const startEmergency = async () => {
-    // Placeholder; wire this to a real Xano endpoint when available.
     try {
       setBusy(true);
       alert('Emergency Protocol triggered (placeholder).');
@@ -134,6 +180,16 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
       alert(e?.message || 'Failed to start emergency');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'present': return 'text-green-600 bg-green-50';
+      case 'absent': return 'text-red-600 bg-red-50';
+      case 'late': return 'text-yellow-600 bg-yellow-50';
+      case 'pending': return 'text-gray-600 bg-gray-50';
+      default: return 'text-gray-500 bg-gray-50';
     }
   };
 
@@ -187,14 +243,14 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           </div>
 
           <div className="rounded-xl border border-gray-100 bg-white p-3">
-            <p className="text-xs text-gray-500">Absent (count)</p>
+            <p className="text-xs text-gray-500">Pending/Late</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">
-              {loading && !data ? '—' : data?.absent ?? 0}
+              {loading && !data ? '—' : `${(data?.pending ?? 0) + (data?.late ?? 0)}`}
             </p>
           </div>
         </div>
 
-        {/* Period Breakdown Section - NEW */}
+        {/* Period Breakdown Section */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-xs font-semibold text-gray-700">Period Attendance</h4>
@@ -216,7 +272,12 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
                 <div
                   key={period}
                   className="rounded-lg border border-gray-100 bg-white p-2 text-center hover:shadow-sm transition-shadow cursor-pointer"
-                  onClick={() => data?.periodStats && setShowPeriods(true)}
+                  onClick={() => {
+                    if (data?.periodStats) {
+                      setSelectedPeriod(period);
+                      setShowPeriods(true);
+                    }
+                  }}
                 >
                   <p className="text-[10px] text-gray-500 font-medium">Period {period}</p>
                   <p className="text-lg font-bold text-gray-900">
@@ -238,7 +299,22 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
         <div className="mb-4">
           <h4 className="mb-2 text-xs font-semibold text-gray-700">Recent Activity</h4>
           <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
-            {error && <div className="px-3 py-4 text-center text-xs text-red-600">{error}</div>}
+            {error && (
+              <div className="px-3 py-4 text-center">
+                <p className="text-sm text-blue-600 mb-2">{error === 'Loading live data' ? 'Loading live data' : error}</p>
+                {error === 'Loading live data' && (
+                  <button
+                    onClick={fetchLive}
+                    className="inline-flex items-center px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                  >
+                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh Live Data
+                  </button>
+                )}
+              </div>
+            )}
             
             {!error && loading && !data && (
               <div className="px-3 py-6 text-center text-xs text-gray-500">Loading…</div>
@@ -284,75 +360,344 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
         </p>
       </div>
 
-      {/* Period Details Modal - NEW */}
+      {/* Period Details Modal with Drill-Down */}
       {showPeriods && data?.periodStats && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setShowPeriods(false)}
+          onClick={() => {
+            setShowPeriods(false);
+            setSelectedPeriod(null);
+            setSelectedClass(null);
+            setClassStudents([]);
+            setSelectedStudent(null);
+          }}
         >
           <div
-            className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
+            className="max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Navigation breadcrumb */}
             <div className="mb-4 flex items-center justify-between">
-              <h4 className="text-lg font-semibold text-gray-900">Period Attendance Details</h4>
+              <div className="flex items-center space-x-2 text-sm">
+                <button
+                  className="text-blue-600 hover:text-blue-700"
+                  onClick={() => {
+                    setSelectedClass(null);
+                    setClassStudents([]);
+                    setSelectedStudent(null);
+                  }}
+                >
+                  Periods
+                </button>
+                {selectedPeriod && (
+                  <>
+                    <span className="text-gray-400">/</span>
+                    <button
+                      className="text-blue-600 hover:text-blue-700"
+                      onClick={() => {
+                        setSelectedClass(null);
+                        setClassStudents([]);
+                        setSelectedStudent(null);
+                      }}
+                    >
+                      Period {selectedPeriod}
+                    </button>
+                  </>
+                )}
+                {selectedClass && (
+                  <>
+                    <span className="text-gray-400">/</span>
+                    <button
+                      className="text-blue-600 hover:text-blue-700"
+                      onClick={() => setSelectedStudent(null)}
+                    >
+                      {selectedClass.className}
+                    </button>
+                  </>
+                )}
+                {selectedStudent && (
+                  <>
+                    <span className="text-gray-400">/</span>
+                    <span className="text-gray-900">{selectedStudent.name || 'Student'}</span>
+                  </>
+                )}
+              </div>
               <button
                 className="rounded-md p-2 hover:bg-gray-100"
-                onClick={() => setShowPeriods(false)}
+                onClick={() => {
+                  setShowPeriods(false);
+                  setSelectedPeriod(null);
+                  setSelectedClass(null);
+                  setClassStudents([]);
+                  setSelectedStudent(null);
+                }}
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
-            
-            <div className="space-y-3">
-              {['1', '2', '3', '4', '5'].map((period) => {
-                const stats = data.periodStats![period];
-                if (!stats) return null;
-                
-                const color = stats.presentPct >= 90 ? 'text-green-600' : 
-                            stats.presentPct >= 75 ? 'text-yellow-600' : 'text-red-600';
-                
-                return (
-                  <div key={period} className="rounded-lg border border-gray-200 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h5 className="font-semibold text-gray-900">Period {period}</h5>
-                      <span className={`text-2xl font-bold ${color}`}>
-                        {stats.presentPct}%
+
+            {detailLoading && (
+              <div className="py-8 text-center text-gray-500">Loading details...</div>
+            )}
+
+            {/* Student Detail View */}
+            {selectedStudent && !detailLoading && (
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-gray-900">Student Information</h4>
+                <div className="rounded-lg border border-gray-200 p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Name</p>
+                      <p className="font-semibold">{selectedStudent.name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Student ID</p>
+                      <p className="font-semibold">{selectedStudent.id || selectedStudent.student_id || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Grade</p>
+                      <p className="font-semibold">{selectedStudent.grade || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Current Status</p>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        getStatusColor(selectedStudent.status || 'pending')
+                      }`}>
+                        {selectedStudent.status || 'Pending'}
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-500">Present</p>
-                        <p className="font-semibold text-gray-900">{stats.present}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Absent</p>
-                        <p className="font-semibold text-gray-900">{stats.absent}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-500">Total</p>
-                        <p className="font-semibold text-gray-900">{stats.total}</p>
-                      </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Email</p>
+                      <p className="font-semibold">{selectedStudent.email || '—'}</p>
                     </div>
-                    <div className="mt-2 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          stats.presentPct >= 90 ? 'bg-green-500' : 
-                          stats.presentPct >= 75 ? 'bg-yellow-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${stats.presentPct}%` }}
-                      />
+                    <div>
+                      <p className="text-sm text-gray-500">Phone</p>
+                      <p className="font-semibold">{selectedStudent.phone || '—'}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  {selectedStudent.parent_info && (
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-sm text-gray-500 mb-2">Parent/Guardian Information</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500">Name</p>
+                          <p className="text-sm font-medium">{selectedStudent.parent_info.name || '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Contact</p>
+                          <p className="text-sm font-medium">{selectedStudent.parent_info.phone || selectedStudent.parent_info.email || '—'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Class Students View */}
+            {selectedClass && !selectedStudent && !detailLoading && (
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-gray-900">
+                  {selectedClass.className} - Period {selectedPeriod}
+                </h4>
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  <button
+                    className="rounded-lg border border-green-200 bg-green-50 p-2 text-center hover:bg-green-100"
+                    onClick={() => {/* Filter by present */}}
+                  >
+                    <p className="text-xs text-green-600">Present</p>
+                    <p className="text-lg font-bold text-green-700">{selectedClass.present}</p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-red-200 bg-red-50 p-2 text-center hover:bg-red-100"
+                    onClick={() => {/* Filter by absent */}}
+                  >
+                    <p className="text-xs text-red-600">Absent</p>
+                    <p className="text-lg font-bold text-red-700">{selectedClass.absent}</p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-center hover:bg-gray-100"
+                    onClick={() => {/* Filter by pending */}}
+                  >
+                    <p className="text-xs text-gray-600">Pending</p>
+                    <p className="text-lg font-bold text-gray-700">{selectedClass.pending}</p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-yellow-200 bg-yellow-50 p-2 text-center hover:bg-yellow-100"
+                    onClick={() => {/* Filter by late */}}
+                  >
+                    <p className="text-xs text-yellow-600">Late</p>
+                    <p className="text-lg font-bold text-yellow-700">{selectedClass.late}</p>
+                  </button>
+                </div>
+                
+                <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                  {classStudents.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-gray-500">No students found</p>
+                  ) : (
+                    classStudents.map((student: any) => (
+                      <button
+                        key={student.id || student.student_id}
+                        className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
+                        onClick={() => fetchStudentDetails(student.id || student.student_id)}
+                      >
+                        <div className="text-left">
+                          <p className="font-medium text-gray-900">{student.name || '—'}</p>
+                          <p className="text-xs text-gray-500">ID: {student.id || student.student_id}</p>
+                        </div>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          getStatusColor(student.status || 'pending')
+                        }`}>
+                          {student.status || 'Pending'}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Period Detail View with Classes */}
+            {selectedPeriod && !selectedClass && !detailLoading && (
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-gray-900">Period {selectedPeriod} Details</h4>
+                
+                {/* Status Summary Cards */}
+                <div className="grid grid-cols-4 gap-3">
+                  <button
+                    className="rounded-lg border border-green-200 bg-green-50 p-3 text-center hover:bg-green-100"
+                  >
+                    <p className="text-xs text-green-600">Present</p>
+                    <p className="text-2xl font-bold text-green-700">
+                      {data.periodStats[selectedPeriod].present}
+                    </p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-red-200 bg-red-50 p-3 text-center hover:bg-red-100"
+                  >
+                    <p className="text-xs text-red-600">Absent</p>
+                    <p className="text-2xl font-bold text-red-700">
+                      {data.periodStats[selectedPeriod].absent}
+                    </p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center hover:bg-gray-100"
+                  >
+                    <p className="text-xs text-gray-600">Pending</p>
+                    <p className="text-2xl font-bold text-gray-700">
+                      {data.periodStats[selectedPeriod].pending}
+                    </p>
+                  </button>
+                  <button
+                    className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-center hover:bg-yellow-100"
+                  >
+                    <p className="text-xs text-yellow-600">Late</p>
+                    <p className="text-2xl font-bold text-yellow-700">
+                      {data.periodStats[selectedPeriod].late}
+                    </p>
+                  </button>
+                </div>
+
+                {/* Classes List */}
+                <div>
+                  <h5 className="text-sm font-semibold text-gray-700 mb-2">Classes</h5>
+                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                    {data.periodStats[selectedPeriod].classes.map((cls) => (
+                      <button
+                        key={cls.className}
+                        className="w-full flex items-center justify-between p-3 hover:bg-gray-50"
+                        onClick={() => {
+                          setSelectedClass(cls);
+                          if (cls.classId) {
+                            fetchClassStudents(cls.classId);
+                          }
+                        }}
+                      >
+                        <div className="text-left">
+                          <p className="font-medium text-gray-900">{cls.className}</p>
+                          <p className="text-xs text-gray-500">{cls.teacher || 'No teacher assigned'}</p>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-gray-900">
+                              {Math.round((cls.present / cls.total) * 100)}% Present
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {cls.present}/{cls.total} students
+                            </p>
+                          </div>
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* All Periods View */}
+            {!selectedPeriod && !detailLoading && (
+              <div className="space-y-3">
+                <h4 className="text-lg font-semibold text-gray-900">All Periods Overview</h4>
+                {['1', '2', '3', '4', '5'].map((period) => {
+                  const stats = data.periodStats![period];
+                  if (!stats) return null;
+                  
+                  const color = stats.presentPct >= 90 ? 'text-green-600' : 
+                              stats.presentPct >= 75 ? 'text-yellow-600' : 'text-red-600';
+                  
+                  return (
+                    <button
+                      key={period}
+                      className="w-full rounded-lg border border-gray-200 p-4 hover:bg-gray-50 text-left"
+                      onClick={() => setSelectedPeriod(period)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="font-semibold text-gray-900">Period {period}</h5>
+                        <span className={`text-2xl font-bold ${color}`}>
+                          {stats.presentPct}%
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-500">Present</p>
+                          <p className="font-semibold text-gray-900">{stats.present}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Absent</p>
+                          <p className="font-semibold text-gray-900">{stats.absent}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Pending</p>
+                          <p className="font-semibold text-gray-900">{stats.pending}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Late</p>
+                          <p className="font-semibold text-gray-900">{stats.late}</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            stats.presentPct >= 90 ? 'bg-green-500' : 
+                            stats.presentPct >= 75 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${stats.presentPct}%` }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Absent details modal */}
+      {/* Absent details modal (existing) */}
       {showAbsent && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
