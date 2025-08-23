@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 function endpoint() {
-  const direct = process.env.XANO_CLASS_STUDENTS_URL || process.env.XANO_CLASS_INFO_URL;
+  const direct = process.env.XANO_CLASS_INFO_URL || process.env.XANO_CLASS_STUDENTS_URL;
   if (direct) return direct.replace(/\/$/, '');
   
   const base =
@@ -12,8 +12,7 @@ function endpoint() {
     process.env.NEXT_PUBLIC_XANO_BASE ||
     '';
   
-  // Use the same endpoint as the live dashboard
-  return `${base.replace(/\/$/, '')}/class_info`;  // <-- Changed this!
+  return `${base.replace(/\/$/, '')}/class_info`;
 }
 
 function readCookie(req: NextRequest, name: string): string | undefined {
@@ -25,10 +24,13 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const classId = (searchParams.get('class_id') || '').trim();
   const teacherEmail = (searchParams.get('teacher_email') || '').trim();
+  const period = (searchParams.get('period') || '').trim();
   
-  if (!classId || !teacherEmail) {
+  console.log('Incoming params:', { classId, teacherEmail, period });
+  
+  if (!classId) {
     return NextResponse.json(
-      { error: 'Missing class_id or teacher_email' },
+      { error: 'Missing class_id' },
       { status: 400 }
     );
   }
@@ -44,25 +46,32 @@ export async function GET(req: NextRequest) {
   
   const url = new URL(endpoint());
   
-  // Use the same parameter names as in the live dashboard
+  // Required parameters
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code', school);
   
-  // Try with class_id first, then class_name (same pattern as live dashboard)
+  // Set class identifier
   if (classId.match(/^\d+$/) || classId.startsWith('CLS')) {
     url.searchParams.set('class_id', classId);
   } else {
     url.searchParams.set('class_name', classId);
   }
   
-  // Add teacher email parameter
-  url.searchParams.set('teacher_email', teacherEmail);
+  // Add period if provided - THIS IS LIKELY REQUIRED
+  if (period) {
+    url.searchParams.set('period', period);
+  }
+  
+  // Optional parameters
+  if (teacherEmail) {
+    url.searchParams.set('teacher_email', teacherEmail);
+  }
   
   if (adminEmail) {
     url.searchParams.set('admin_email', adminEmail);
   }
   
-  // Add cache busting
+  // Cache busting
   url.searchParams.set('_ts', Date.now().toString());
   url.searchParams.set('_rand', Math.random().toString(36));
   
@@ -76,6 +85,8 @@ export async function GET(req: NextRequest) {
     headers.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
   }
   
+  console.log('Calling Xano URL:', url.toString());
+  
   try {
     const r = await fetch(url.toString(), {
       method: 'GET',
@@ -84,6 +95,7 @@ export async function GET(req: NextRequest) {
     });
     
     const data = await r.json();
+    console.log('Xano response:', data);
     
     // The response might be in different formats, normalize it
     const students = Array.isArray(data) ? data : 
@@ -99,8 +111,9 @@ export async function GET(req: NextRequest) {
       attendance_status: student.attendance_status || student.status || 'pending',
       class_name: student.class_name,
       teacher_name: student.teacher_name,
-      // Include other fields as needed
     }));
+    
+    console.log('Normalized students:', normalizedStudents);
     
     return NextResponse.json(normalizedStudents, { status: r.status });
   } catch (error) {
