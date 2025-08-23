@@ -164,6 +164,16 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     }
   };
 
+  // Filter students by status
+  const filterStudentsByStatus = (status: string | null) => {
+    setStatusFilter(status);
+    if (!status) {
+      setFilteredStudents(classStudents);
+    } else {
+      setFilteredStudents(classStudents.filter((s: any) => s.status === status));
+    }
+  };
+
   useEffect(() => {
     fetchLive();
     const id = setInterval(fetchLive, pollMs);
