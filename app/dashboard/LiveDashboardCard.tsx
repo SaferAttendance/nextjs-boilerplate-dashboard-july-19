@@ -83,7 +83,7 @@ function timeAgo(ts?: number | string | null) {
 
 /* ---------- component ---------- */
 
-export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number }) {
+export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }) {
   const [data, setData] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,44 +135,16 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
   const fetchClassStudents = async (classId: string, period: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${encodeURIComponent(classId)}&period=${period}`, {
+      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}&period=${period}`, {
         cache: 'no-store',
       });
       const data = await res.json();
-      const students = Array.isArray(data) ? data : data?.students || [];
-      setClassStudents(students);
-      setFilteredStudents(students); // Initially show all students
-      
-      // If we have students from periodStats, use those
-      if (selectedPeriod && data?.periodStats?.[selectedPeriod]) {
-        const periodData = data.periodStats[selectedPeriod];
-        const classData = periodData.classes?.find((c: any) => 
-          c.className === classId || c.classId === classId
-        );
-        if (classData && periodData.students) {
-          const classStudentsList = periodData.students.filter((s: any) => 
-            s.class === classData.className || s.classId === classData.classId
-          );
-          setClassStudents(classStudentsList);
-          setFilteredStudents(classStudentsList);
-        }
-      }
+      setClassStudents(Array.isArray(data) ? data : data?.students || []);
     } catch (e) {
       console.error('Failed to fetch class students:', e);
       setClassStudents([]);
-      setFilteredStudents([]);
     } finally {
       setDetailLoading(false);
-    }
-  };
-
-  // Filter students by status
-  const filterStudentsByStatus = (status: string | null) => {
-    setStatusFilter(status);
-    if (!status) {
-      setFilteredStudents(classStudents);
-    } else {
-      setFilteredStudents(classStudents.filter((s: any) => s.status === status));
     }
   };
 
@@ -207,11 +179,25 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
     }
   };
 
+  // Filter students by status
+  const filterStudentsByStatus = (status: string | null) => {
+    setStatusFilter(status);
+    if (!status) {
+      setFilteredStudents(classStudents);
+    } else {
+      setFilteredStudents(classStudents.filter((s: any) => s.status === status));
+    }
+  };
+
   useEffect(() => {
     fetchLive();
     const id = setInterval(fetchLive, pollMs);
     return () => clearInterval(id);
   }, [pollMs]);
+
+  const total = data?.total ?? (data ? data.present + data.absent : 0);
+  const presentPct = data?.presentPct ?? (total ? Math.round((data!.present / total) * 100) : 0);
+  const absentPct = data?.absentPct ?? (total ? Math.round((data!.absent / total) * 100) : 0);
 
   const startEmergency = async () => {
     try {
@@ -252,6 +238,8 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
             <span className="text-xs text-gray-600">Live</span>
           </div>
         </div>
+
+       
 
         {/* Period Breakdown Section */}
         <div className="mb-4">
@@ -756,7 +744,7 @@ export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number 
           </div>
         </div>
       )}
-
+        {/*test*/}
       {/* Absent details modal (existing) */}
       {showAbsent && (
         <div
