@@ -83,7 +83,7 @@ function timeAgo(ts?: number | string | null) {
 
 /* ---------- component ---------- */
 
-export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }) {
+export default function LiveDashboardCard({ pollMs = 15000 }: { pollMs?: number }) {
   const [data, setData] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
