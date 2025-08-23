@@ -83,7 +83,8 @@ function timeAgo(ts?: number | string | null) {
 
 /* ---------- component ---------- */
 
-export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }) {
+// Changed default from 5000ms to 30000ms (30 seconds)
+export default function LiveDashboardCard({ pollMs = 30000 }: { pollMs?: number }) {
   const [data, setData] = useState<LivePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,11 +111,23 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
 
     try {
       setError(null);
-      const res = await fetch('/api/xano/live-dashboard', {
+      console.log('Frontend fetching at:', new Date().toISOString());
+      
+      // Add timestamp to URL to bust cache
+      const res = await fetch(`/api/xano/live-dashboard?_t=${Date.now()}`, {
+        method: 'GET',
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-store' },
+        mode: 'cors',
+        credentials: 'same-origin',
+        headers: { 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
       });
       const payload = await res.json();
+      
+      console.log('Received data timestamp:', payload.timestamp);
+      
       if (!res.ok) {
         // Special handling for loading state
         if (payload?.error === 'Loading live data') {
@@ -131,13 +144,22 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     }
   };
 
-  // Fetch class students
+  // Fetch class students - with cache busting
   const fetchClassStudents = async (classId: string, period: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/xano/live-dashboard?detail=students&classId=${classId}&period=${period}`, {
-        cache: 'no-store',
-      });
+      const res = await fetch(
+        `/api/xano/live-dashboard?detail=students&classId=${classId}&period=${period}&_t=${Date.now()}`, 
+        {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        }
+      );
       const data = await res.json();
       setClassStudents(Array.isArray(data) ? data : data?.students || []);
     } catch (e) {
@@ -148,13 +170,22 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
     }
   };
 
-  // Fetch individual student details
+  // Fetch individual student details - with cache busting
   const fetchStudentDetails = async (studentId: string) => {
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/xano/live-dashboard?detail=student&studentId=${studentId}`, {
-        cache: 'no-store',
-      });
+      const res = await fetch(
+        `/api/xano/live-dashboard?detail=student&studentId=${studentId}&_t=${Date.now()}`, 
+        {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        }
+      );
       const studentData = await res.json();
       
       // Merge the student data with class information
@@ -235,7 +266,7 @@ export default function LiveDashboardCard({ pollMs = 5000 }: { pollMs?: number }
           </div>
           <div className="hidden sm:flex items-center space-x-2">
             <span className="h-2 w-2 rounded-full animate-pulse bg-green-400" />
-            <span className="text-xs text-gray-600">Live</span>
+            <span className="text-xs text-gray-600">Live (30s refresh)</span>
           </div>
         </div>
 
