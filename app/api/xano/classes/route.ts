@@ -42,12 +42,40 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code',   school);
 
-  /* Decide whether q is ID-like or Name-like */
-  if (/^\d+$/.test(q) || q.startsWith('CLS')) {
-    url.searchParams.set('class_id', q);
-  } else {
-    url.searchParams.set('class_name', q);
-  }
+/* Decide whether q is ID-only, letters+numbers, or letters-only.
+   - Normalize: remove separators and uppercase letters
+   - Keep numeric part as-is to preserve leading zeros (e.g., "022") */
+const raw = (searchParams.get('q') || '').trim();
+const cleaned = raw.replace(/[\s._-]+/g, '').toUpperCase();
+
+const onlyDigits   = /^[0-9]+$/.test(cleaned);
+const onlyLetters  = /^[A-Z]+$/.test(cleaned);
+// letters+digits(+optional trailing letters), e.g. "MM022", "ENG10A"
+const lettersNums  = cleaned.match(/^([A-Z]+)(\d+)([A-Z]*)$/);
+
+if (onlyDigits) {
+  // Digits only → ID
+  url.searchParams.set('class_id', cleaned); // leading zeros preserved
+} else if (lettersNums) {
+  // Split into uppercase letters and numeric part
+  const letters = (lettersNums[1] + (lettersNums[3] || '')).toUpperCase(); // e.g., "ENGA" from "ENG10A"
+  const numbers = lettersNums[2]; // e.g., "022" (keeps leading zeros)
+  url.searchParams.set('class_name', letters);
+  url.searchParams.set('class_id', numbers);
+  // Optional: send full code if Xano supports it
+  url.searchParams.set('class_code', cleaned);
+} else if (onlyLetters) {
+  // Letters only → name (uppercase)
+  url.searchParams.set('class_name', cleaned);
+} else {
+  // Fallback: extract letters/numbers separately if mixed oddly
+  const letters = (cleaned.match(/[A-Z]+/g) || []).join('');
+  const numbers = (cleaned.match(/\d+/g) || []).join('');
+  if (letters) url.searchParams.set('class_name', letters.toUpperCase());
+  if (numbers) url.searchParams.set('class_id', numbers);
+  url.searchParams.set('class_code', cleaned);
+}
+
 
   if (admin) url.searchParams.set('admin_email', admin);
 
