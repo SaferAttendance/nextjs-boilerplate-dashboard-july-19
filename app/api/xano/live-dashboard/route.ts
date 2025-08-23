@@ -154,46 +154,76 @@ export async function GET(req: NextRequest) {
   }
   
   if (detailType === 'students' && classId && period) {
-    // Get students for a specific class using the class info endpoint
-    const url = new URL(classInfoUrl());
-    url.searchParams.set('district_code', district);
-    url.searchParams.set('school_code', school);
-    
-    // Try with class_id first, then class_name
-    if (classId.match(/^\d+$/) || classId.startsWith('CLS')) {
-      url.searchParams.set('class_id', classId);
-    } else {
-      url.searchParams.set('class_name', classId);
-    }
-    
-    if (period) url.searchParams.set('period', period);
-    if (email) url.searchParams.set('admin_email', email);
+    // Get students for a specific class and period
+    // First, get the list of students in the class
+    const classUrl = new URL(classStudentsUrl());
+    classUrl.searchParams.set('district_code', district);
+    classUrl.searchParams.set('school_code', school);
+    classUrl.searchParams.set('class_id', classId);
+    classUrl.searchParams.set('period', period);
+    if (email) classUrl.searchParams.set('admin_email', email);
     
     try {
-      const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
-      const classData = await res.json();
+      const classRes = await fetch(classUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
+      const classData = await classRes.json();
       
-      // The XANO_CLASS_INFO_URL returns an array of students with attendance_status
-      const students = Array.isArray(classData) ? classData : 
-                      classData?.students || 
-                      classData?.records || 
-                      [];
+      // Get attendance status for each student from the CSV data
+      const cUrl = new URL(csvUrl());
+      cUrl.searchParams.set('district_code', district);
+      cUrl.searchParams.set('school_code', school);
+      if (email) {
+        cUrl.searchParams.set('email', email);
+        cUrl.searchParams.set('admin_email', email);
+      }
       
-      // Map the attendance_status field to our status field
+      const headersCsv: HeadersInit = { Accept: 'text/csv', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
+      if (process.env.XANO_API_KEY) {
+        headersCsv.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
+      }
+      
+      const csvRes = await fetch(cUrl.toString(), { method: 'GET', headers: headersCsv, cache: 'no-store' });
+      const csvText = await csvRes.text();
+      const rows = parseCsv(csvText);
+      
+      // Create a map of student attendance by ID and period
+      const attendanceMap = new Map<string, string>();
+      const H = {
+        id: ['student_id', 'studentid', 'id'],
+        status: ['attendance_status', 'status', 'attendance'],
+        period: ['period'],
+      };
+      
+      for (const r of rows) {
+        const id = String(pick(r, H.id) ?? '').trim();
+        const periodVal = String(pick(r, H.period) ?? '').trim();
+        const status = normalizeStatus(pick(r, H.status) as string);
+        
+        if (id && periodVal === period && status) {
+          attendanceMap.set(id, status);
+        }
+      }
+      
+      // Merge attendance status with student list
+      const students = Array.isArray(classData) ? classData : classData?.students || [];
       const studentsWithStatus = students.map((student: any) => ({
-        id: student.student_id || student.id,
-        student_id: student.student_id || student.id,
-        name: student.student_name || student.name || '—',
-        status: normalizeStatus(student.attendance_status) || 'pending',
-        attendance_status: student.attendance_status,
-        class: student.class_name,
-        teacher: student.teacher_name,
+        ...student,
+        status: attendanceMap.get(student.id || student.student_id) || 'pending'
       }));
       
       return NextResponse.json({ students: studentsWithStatus }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (e) {
-      console.error('Error fetching class students:', e);
-      return NextResponse.json({ students: [] }, { headers: { 'Cache-Control': 'no-store' } });
+      // If the class students endpoint doesn't exist, try the student-classes endpoint
+      const studClassUrl = new URL(studentsClassesUrl());
+      studClassUrl.searchParams.set('district_code', district);
+      studClassUrl.searchParams.set('school_code', school);
+      studClassUrl.searchParams.set('class_id', classId);
+      studClassUrl.searchParams.set('period', period);
+      if (email) studClassUrl.searchParams.set('parent_email', email);
+      
+      const res = await fetch(studClassUrl.toString(), { method: 'GET', headers, cache: 'no-store' });
+      const data = await res.json();
+      
+      return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     }
   }
   
