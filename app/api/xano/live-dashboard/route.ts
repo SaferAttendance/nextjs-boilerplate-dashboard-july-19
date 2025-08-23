@@ -125,7 +125,18 @@ export async function GET(req: NextRequest) {
   const school = readCookie(req, 'school_code');
 
   if (!district || !school) {
-    return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Missing admin scope' }, 
+      { 
+        status: 401,
+        headers: { 
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        } 
+      }
+    );
   }
 
   const headers: HeadersInit = { 
@@ -145,12 +156,21 @@ export async function GET(req: NextRequest) {
     url.searchParams.set('district_code', district);
     url.searchParams.set('school_code', school);
     url.searchParams.set('period', period);
+    url.searchParams.set('_ts', Date.now().toString());
+    url.searchParams.set('_rand', Math.random().toString(36));
     if (email) url.searchParams.set('admin_email', email);
     
     const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
     const data = await res.json();
     
-    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(data, { 
+      headers: { 
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+      } 
+    });
   }
   
   if (detailType === 'students' && classId && period) {
@@ -167,6 +187,8 @@ export async function GET(req: NextRequest) {
     }
     
     if (period) url.searchParams.set('period', period);
+    url.searchParams.set('_ts', Date.now().toString());
+    url.searchParams.set('_rand', Math.random().toString(36));
     if (email) url.searchParams.set('admin_email', email);
     
     try {
@@ -190,10 +212,24 @@ export async function GET(req: NextRequest) {
         teacher: student.teacher_name,
       }));
       
-      return NextResponse.json({ students: studentsWithStatus }, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ students: studentsWithStatus }, { 
+        headers: { 
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        } 
+      });
     } catch (e) {
       console.error('Error fetching class students:', e);
-      return NextResponse.json({ students: [] }, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ students: [] }, { 
+        headers: { 
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        } 
+      });
     }
   }
   
@@ -203,12 +239,21 @@ export async function GET(req: NextRequest) {
     url.searchParams.set('district_code', district);
     url.searchParams.set('school_code', school);
     url.searchParams.set('student_id', studentId);
+    url.searchParams.set('_ts', Date.now().toString());
+    url.searchParams.set('_rand', Math.random().toString(36));
     if (email) url.searchParams.set('admin_email', email);
     
     const res = await fetch(url.toString(), { method: 'GET', headers, cache: 'no-store' });
     const data = await res.json();
     
-    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(data, { 
+      headers: { 
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+      } 
+    });
   }
 
   // Main dashboard data
@@ -220,6 +265,7 @@ export async function GET(req: NextRequest) {
     cUrl.searchParams.set('admin_email', email);
   }
   cUrl.searchParams.set('_ts', Date.now().toString());
+  cUrl.searchParams.set('_rand', Math.random().toString(36));
 
   const sUrl = new URL(subsListUrl());
   sUrl.searchParams.set('district_code', district);
@@ -229,6 +275,7 @@ export async function GET(req: NextRequest) {
     sUrl.searchParams.set('admin_email', email);
   }
   sUrl.searchParams.set('_ts', Date.now().toString());
+  sUrl.searchParams.set('_rand', Math.random().toString(36));
 
   const headersCsv: HeadersInit = { Accept: 'text/csv', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
   const headersJson: HeadersInit = { Accept: 'application/json', 'Cache-Control': 'no-store', Pragma: 'no-cache' };
@@ -237,6 +284,8 @@ export async function GET(req: NextRequest) {
     headersJson.Authorization = `Bearer ${process.env.XANO_API_KEY}`;
   }
 
+  console.log('Fetching dashboard data at:', new Date().toISOString());
+  
   const [csvRes, subsRes] = await Promise.all([
     fetch(cUrl.toString(), { method: 'GET', headers: headersCsv, cache: 'no-store' }),
     fetch(sUrl.toString(), { method: 'GET', headers: headersJson, cache: 'no-store' }),
@@ -245,14 +294,25 @@ export async function GET(req: NextRequest) {
   const csvText = await csvRes.text().catch(() => '');
   const subsPayload = await subsRes.json().catch(() => []);
 
+  console.log('CSV Response cache-control:', csvRes.headers.get('cache-control'));
+
   if (!csvRes.ok) {
     return NextResponse.json(
       { error: 'Loading live data' },
-      { status: csvRes.status, headers: { 'Cache-Control': 'no-store' } }
+      { 
+        status: csvRes.status, 
+        headers: { 
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store'
+        } 
+      }
     );
   }
 
   const rows = parseCsv(csvText);
+  console.log('Parsed rows count:', rows.length);
 
   const H = {
     id: ['student_id', 'studentid', 'id'],
@@ -504,6 +564,13 @@ export async function GET(req: NextRequest) {
       activity,
       timestamp: Date.now(),
     },
-    { headers: { 'Cache-Control': 'no-store' } }
+    { 
+      headers: { 
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+      } 
+    }
   );
 }
