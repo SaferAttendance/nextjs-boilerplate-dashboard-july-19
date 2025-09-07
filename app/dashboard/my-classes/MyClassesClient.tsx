@@ -1,4 +1,3 @@
-// app/dashboard/my-classes/MyClassesClient.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -67,7 +66,6 @@ function statusPillClasses(status?: string) {
   return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
 }
 
-// small helpers
 const normalizeEmail = (v?: string) => (v || '').trim().toLowerCase();
 
 /* ---------- Component ---------- */
@@ -143,7 +141,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       setError(null);
 
       try {
-        // Search can be fuzzy; we'll filter to exact email below
         const res = await fetch(`/api/xano/teachers?q=${encodeURIComponent(teacherEmail)}`, {
           method: 'GET',
           cache: 'no-store',
@@ -158,7 +155,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
           ? payload
           : payload?.records ?? [];
 
-        // ✨ CRITICAL: keep only rows for the exact logged-in email
+        // ✨ keep only rows for the exact logged-in email
         const filtered = rows.filter(
           (r) => normalizeEmail(r.teacher_email) === normalizeEmail(teacherEmail)
         );
@@ -206,9 +203,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       let period = '';
       if (modalClass.schedule) {
         const match = modalClass.schedule.match(/Period\s+(\d+)/i);
-        if (match) {
-          period = match[1];
-        }
+        if (match) period = match[1];
       }
 
       let url = `/api/xano/class-students?class_id=${encodeURIComponent(
@@ -276,7 +271,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       <div className="text-center py-16">
         <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253" />
           </svg>
         </div>
         <h3 className="text-xl font-semibold text-gray-800 mb-2">No Classes Found</h3>
