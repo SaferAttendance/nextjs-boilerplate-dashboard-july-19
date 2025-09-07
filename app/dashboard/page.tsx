@@ -27,6 +27,15 @@ function normalizeRole(input?: string): RolePreview {
   return 'admin';
 }
 
+function capitalize(word?: string | null) {
+  if (!word) return 'N/A';
+  return word.slice(0, 1).toUpperCase() + word.slice(1);
+}
+
+function displayOrNA(v?: string | null) {
+  return v && v.trim().length ? v : 'N/A';
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -77,12 +86,7 @@ export default async function DashboardPage({
     actualUserRole = normalizeRole(profileRole);
   }
 
-  // If no profile in cookies, we'll need to handle this on the client side
-  // The sessionStorage will be read by client-side code if needed
-
   // ----- Role preview toggle support -----
-  // 1) For admins: allow ?view=admin|teacher|parent|sub to preview other roles
-  // 2) For non-admins: always show their actual role (ignore view parameter)
   const sp = (await searchParams) ?? {};
   const rawView = Array.isArray(sp.view) ? sp.view[0] : sp.view;
   
@@ -99,6 +103,16 @@ export default async function DashboardPage({
   const isTeacher = previewRole === 'teacher';
   const isParent  = previewRole === 'parent';
   const isSub     = previewRole === 'sub';
+
+  // Derived values for the profile popover
+  const initial = fullName?.[0]?.toUpperCase() || 'U';
+  const popEmail = userProfile?.email ?? profileEmail ?? 'N/A';
+  const popFullName = userProfile?.fullName ?? fullName ?? 'N/A';
+  const popRole = userProfile?.role ?? (profileRole as StoredUserProfile['role'] | undefined) ?? 'admin';
+  const popDistrict = userProfile?.districtCode ?? profileDistrictCode ?? null;
+  const popSchool = userProfile?.schoolCode ?? profileSchoolCode ?? null;
+  const popSubAssigned = userProfile?.subAssigned ?? null;
+  const popPhoneId = userProfile?.phoneId ?? jar.get('phone_id')?.value ?? null;
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -129,9 +143,71 @@ export default async function DashboardPage({
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">System Online</span>
             </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
-              {fullName?.[0]?.toUpperCase() || 'U'}
-            </div>
+
+            {/* Profile popover (no client JS needed) */}
+            <details className="relative">
+              <summary
+                aria-label="View profile"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white outline-none ring-0 transition hover:brightness-110 focus:ring-2 focus:ring-blue-500/40 [&::-webkit-details-marker]:hidden list-none"
+              >
+                {initial}
+              </summary>
+
+              {/* Panel */}
+              <div
+                role="menu"
+                className="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-xl"
+              >
+                <div className="mb-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Signed in as</p>
+                  <p className="truncate text-base font-semibold text-gray-900">{displayOrNA(popFullName)}</p>
+                  <p className="truncate text-xs text-gray-600">{displayOrNA(popEmail)}</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <dl className="grid grid-cols-3 gap-y-2">
+                      <dt className="col-span-1 text-gray-500">Role</dt>
+                      <dd className="col-span-2 font-medium text-gray-900">{capitalize(popRole)}</dd>
+
+                      <dt className="col-span-1 text-gray-500">District</dt>
+                      <dd className="col-span-2 font-medium text-gray-900">{displayOrNA(popDistrict)}</dd>
+
+                      <dt className="col-span-1 text-gray-500">School</dt>
+                      <dd className="col-span-2 font-medium text-gray-900">{displayOrNA(popSchool)}</dd>
+
+                      {/* Sub_assigned: hidden unless assigned */}
+                      {popSubAssigned && popSubAssigned.trim().length > 0 && (
+                        <>
+                          <dt className="col-span-1 text-gray-500">Sub_assigned</dt>
+                          <dd className="col-span-2 font-medium text-gray-900">{popSubAssigned}</dd>
+                        </>
+                      )}
+
+                      <dt className="col-span-1 text-gray-500">Phone_Id</dt>
+                      <dd className="col-span-2 font-medium text-gray-900">{displayOrNA(popPhoneId)}</dd>
+                    </dl>
+                  </div>
+
+                  <p className="text-[11px] leading-4 text-gray-500">
+                    These values are read from cookies set during sign-in. If something looks off, sign out and back in.
+                  </p>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="opacity-80">
+                      <path d="M12 15v-3m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Cookie-backed profile
+                  </span>
+                  {/* A convenient logout in-panel */}
+                  <LogoutButton />
+                </div>
+              </div>
+            </details>
+
+            {/* Existing logout (kept for parity; the in-panel one is optional) */}
             <LogoutButton />
           </div>
         </div>
@@ -380,7 +456,7 @@ export default async function DashboardPage({
               className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-blue-400 to-blue-600 text-white">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <svg width="20" height="20" viewBox="0 0 24 24  fill='none' stroke='currentColor'">
                   <path d="M12 20l9-9-3-3-9 9-3 1 1-3 9-9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
