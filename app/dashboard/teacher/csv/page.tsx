@@ -52,7 +52,7 @@ export default async function TeacherCsvPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex h-20 items-center justify-between">
               <Link 
-                href="/dashboard/teacher" 
+                href="/dashboard" 
                 className="group flex items-center gap-3 rounded-xl px-4 py-2 transition-all hover:bg-neutral-50"
               >
                 <svg 
