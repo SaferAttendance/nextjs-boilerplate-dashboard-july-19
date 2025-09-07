@@ -253,8 +253,8 @@ export default async function DashboardPage({
         <h2 className="mb-6 text-2xl font-bold text-gray-900">Quick Actions</h2>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Search Students (Admin, Teacher, Sub) */}
-          {(isAdmin || isTeacher || isSub) && (
+          {/* Search Students (Admin only) */}
+          {isAdmin && (
             <Link
               href="/dashboard/students"
               className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30"
@@ -268,7 +268,7 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">Search Students</h3>
-              <p className="mt-1 text-sm text-gray-600">Find and view student information and attendance records (scoped by role).</p>
+              <p className="mt-1 text-sm text-gray-600">Find and view student information and attendance records.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
