@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
 
   // ---- Check permissions
   const isAdmin = role === 'admin';
-  const isTeacherOrSub = role === 'teacher' || role === 'substitute';
+  // Handle both 'sub' and 'substitute' variations
+  const isTeacherOrSub = role === 'teacher' || role === 'substitute' || role === 'sub';
 
   // Admins need district and school codes
   if (isAdmin && (!district || !school)) {
