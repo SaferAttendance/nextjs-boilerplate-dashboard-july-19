@@ -28,7 +28,7 @@ function normalizeRole(input?: string): RolePreview {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: { view?: string };
+  searchParams?: Promise<{ view?: string }>;
 }) {
   const jar = await cookies();
 
@@ -90,7 +90,9 @@ export default async function DashboardPage({
   // ----- NEW: role preview toggle support -----
   // 1) use ?view=admin|teacher|parent|sub to preview
   // 2) fallback to cookie "role" if present
-  const previewRole = normalizeRole(searchParams?.view ?? jar.get('role')?.value);
+  // Await searchParams since it's a Promise in Next.js 15
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const previewRole = normalizeRole(resolvedSearchParams?.view ?? jar.get('role')?.value);
 
   const isAdmin   = previewRole === 'admin';
   const isTeacher = previewRole === 'teacher';
@@ -410,7 +412,7 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">My Children</h3>
-              <p className="mt-1 text-sm text-gray-600">See your children’s profiles, classes, and attendance.</p>
+              <p className="mt-1 text-sm text-gray-600">See your children's profiles, classes, and attendance.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -432,7 +434,7 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">Today&apos;s Attendance</h3>
-              <p className="mt-1 text-sm text-gray-600">View today’s attendance for your children.</p>
+              <p className="mt-1 text-sm text-gray-600">View today's attendance for your children.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -455,7 +457,7 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">Class List</h3>
-              <p className="mt-1 text-sm text-gray-600">See each child’s current classes and teachers.</p>
+              <p className="mt-1 text-sm text-gray-600">See each child's current classes and teachers.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
