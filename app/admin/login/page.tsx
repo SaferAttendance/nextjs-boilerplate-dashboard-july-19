@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
 
-/** Shape returned by our server route /api/user/verify */
+/** Shape returned by /api/verify (server proxy to Xano) */
 type UserVerificationResponse = {
   email: string | null;
   full_name: string | null;
@@ -18,17 +18,23 @@ type UserVerificationResponse = {
 
 /** Call our server route (keeps Xano URL/API key server-side) */
 async function verifyUserViaApi(email: string): Promise<UserVerificationResponse> {
-  const res = await fetch(`/api/user/verify?email=${encodeURIComponent(email)}`, {
+  const res = await fetch(`/api/verify?email=${encodeURIComponent(email)}`, {
     method: 'GET',
     cache: 'no-store',
   });
-
   if (!res.ok) {
     const msg = await res.text().catch(() => '');
     throw new Error(msg || `User verification failed (${res.status})`);
   }
-
   return (await res.json()) as UserVerificationResponse;
+}
+
+function setCookie(name: string, value: string, maxAgeSeconds: number) {
+  try {
+    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`;
+  } catch {
+    /* non-fatal */
+  }
 }
 
 export default function LoginPage() {
@@ -63,33 +69,20 @@ export default function LoginPage() {
       try {
         userProfile = await verifyUserViaApi(email);
       } catch (e: any) {
-        throw new Error(
-          e?.message ||
-          'Unable to verify your account right now. Please try again.'
-        );
+        throw new Error(e?.message || 'Unable to verify your account right now. Please try again.');
       }
 
-      // Check if user exists and has a valid role
       if (!userProfile.email || !userProfile.role) {
-        throw new Error(
-          'This account is not authorized for system access. If you believe this is a mistake, contact your administrator.'
-        );
+        throw new Error('This account is not authorized for system access.');
       }
 
-      // Validate role is one of the expected values
-      const validRoles = ['admin', 'teacher', 'parent', 'substitute'];
-      if (!validRoles.includes(userProfile.role)) {
-        throw new Error(
-          'Invalid user role. Please contact your administrator.'
-        );
+      const validRoles = ['admin', 'teacher', 'parent', 'substitute'] as const;
+      if (!validRoles.includes(userProfile.role as any)) {
+        throw new Error('Invalid user role. Please contact your administrator.');
       }
 
       // 1) Firebase sign in (after confirming valid user)
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        formData.password
-      );
+      const userCredential = await signInWithEmailAndPassword(auth, email, formData.password);
 
       // 2) Create httpOnly session cookie on server
       const idToken = await userCredential.user.getIdToken();
@@ -100,38 +93,57 @@ export default function LoginPage() {
       });
       if (!sessionRes.ok) throw new Error('Failed to create a secure session.');
 
-      // 3) Hydrate profile/scope cookies from server (if your session GET does that)
+      // 3) Hydrate server-managed cookies (optional)
       try {
         await fetch('/api/session', { method: 'GET', cache: 'no-store' });
-        // tiny delay to avoid any rare cookie race on fast redirects
         await new Promise((r) => setTimeout(r, 50));
       } catch (e) {
-        // non-fatal
         console.warn('Session hydrate failed (continuing):', e);
       }
 
-      // 4) Store complete user profile for dashboard use
+      // 4) Store profile in sessionStorage AND set readable cookies for SSR dashboard
       try {
+        const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24; // 30d vs 1d
+        const fullName = userProfile.full_name ?? '';
+        const district = userProfile.district_code ?? '';
+        const school = userProfile.school_code ?? '';
+        const subAssigned = userProfile.sub_assigned ?? '';
+        const phoneId = userProfile.Phone_ID ?? '';
+        const role = userProfile.role; // 'admin' | 'teacher' | 'parent' | 'substitute'
+
+        // client snapshot
         sessionStorage.setItem('sa_profile', JSON.stringify({
           email: userProfile.email,
-          fullName: userProfile.full_name,
-          role: userProfile.role,
-          districtCode: userProfile.district_code,
-          schoolCode: userProfile.school_code,
-          subAssigned: userProfile.sub_assigned,
-          phoneId: userProfile.Phone_ID,
+          fullName,
+          role,
+          districtCode: district,
+          schoolCode: school,
+          subAssigned,
+          phoneId,
         }));
-      } catch {}
 
-      // 5) Go to dashboard
-      router.replace('/dashboard');
+        // cookies read by server components (dashboard)
+        setCookie('role', role || '', maxAge);
+        setCookie('full_name', fullName, maxAge);
+        setCookie('fullname', fullName, maxAge);
+        setCookie('email', userProfile.email ?? email, maxAge);
+        setCookie('district_code', district, maxAge);
+        setCookie('school_code', school, maxAge);
+        setCookie('sub_assigned', String(subAssigned), maxAge);
+        setCookie('phone_id', phoneId, maxAge);
+      } catch {
+        /* non-fatal */
+      }
+
+      // 5) Go to dashboard (force the correct preview immediately)
+      const view = userProfile.role === 'substitute' ? 'sub' : userProfile.role;
+      router.replace(`/dashboard?view=${encodeURIComponent(view!)}`);
     } catch (err: any) {
       console.error('Login error:', err);
       if (err?.code === 'auth/user-not-found') setError('No account found with this email.');
       else if (err?.code === 'auth/wrong-password') setError('Incorrect password.');
       else if (err?.code === 'auth/invalid-email') setError('Invalid email address.');
-      else if (err?.code === 'auth/too-many-requests')
-        setError('Too many attempts. Please try again later.');
+      else if (err?.code === 'auth/too-many-requests') setError('Too many attempts. Please try again later.');
       else setError(err?.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
@@ -140,7 +152,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-50">
-      {/* LEFT — Brand / gradient panel (desktop only) */}
+      {/* LEFT — Brand panel */}
       <section className="relative hidden lg:flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-brand-light via-brand-blue to-brand-dark" />
         <div className="pointer-events-none absolute -top-24 -left-20 h-96 w-96 rounded-full bg-white/20 blur-3xl animate-pulse" />
@@ -155,8 +167,7 @@ export default function LoginPage() {
           </div>
           <h2 className="text-4xl font-bold tracking-tight drop-shadow-sm">Safer Attendance</h2>
           <p className="mt-3 text-white/90 leading-relaxed">
-            Ensuring safety one class at a time while promoting attendance through innovative
-            technology.
+            Ensuring safety one class at a time while promoting attendance through innovative technology.
           </p>
           <div className="mt-8 flex items-center gap-6 text-white/80">
             <div className="flex items-center gap-2">
@@ -332,7 +343,7 @@ export default function LoginPage() {
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
-                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 616 0z"
+                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
                   clipRule="evenodd"
                 />
               </svg>
