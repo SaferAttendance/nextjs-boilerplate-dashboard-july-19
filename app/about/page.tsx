@@ -402,7 +402,7 @@ export default function AboutPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Daphne Quidort</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Daphne Aurelius </h3>
               <p className="text-accent-purple font-semibold mb-4">Chief Technology Officer</p>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
                 Technology innovator architecting our cutting-edge platform. Daphne&apos;s technical expertise ensures our solutions are secure, scalable,
