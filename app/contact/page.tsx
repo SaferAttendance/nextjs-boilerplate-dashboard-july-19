@@ -965,7 +965,7 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Lionel Wagner</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">Lionel Penn</h3>
               <p className="mb-3 font-medium text-brand-dark">CEO</p>
               <p className="mb-4 text-sm text-gray-600">Strategic partnerships &amp; vision</p>
               <button
@@ -983,7 +983,7 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Johanna Wagner</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">Johanna Penn</h3>
               <p className="mb-3 font-medium text-accent-emerald">CFO</p>
               <p className="mb-4 text-sm text-gray-600">Pricing &amp; financial planning</p>
               <button
