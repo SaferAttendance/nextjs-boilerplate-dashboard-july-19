@@ -225,7 +225,7 @@ export default function AboutPage() {
                   </p>
 
                   <p className="mb-6">
-                    Our founders, Nicholas and Ashley Wagner, along with Kira and Eric Quidort, combined their expertise in education, finance,
+                    Our founders, Lionel and Johanna Penn, along with Daphne and John, combined their expertise in education, finance,
                     technology, and marketing to create a solution that would revolutionize how schools monitor and protect their students. What
                     started as a simple idea to improve attendance tracking has evolved into a comprehensive safety platform trusted by hundreds of
                     schools nationwide.
@@ -308,7 +308,7 @@ export default function AboutPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {/* Nicholas */}
+            {/* Lionel */}
             <div className="reveal-card group bg-white/70 backdrop-blur-xl rounded-3xl p-8 shadow-lg shadow-gray-200/50 border border-white/20 hover:shadow-xl hover:-translate-y-2 transition-all duration-500 text-center">
               <div className="relative mb-6">
                 <div className="w-24 h-24 bg-gradient-to-br from-brand-blue to-brand-dark rounded-full flex items-center justify-center mx-auto shadow-lg shadow-brand-blue/25 group-hover:scale-110 transition-transform duration-300">
@@ -322,10 +322,10 @@ export default function AboutPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Nicholas Wagner</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Lionel Penn</h3>
               <p className="text-brand-dark font-semibold mb-4">Chief Executive Officer</p>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                Visionary leader with 15+ years in educational technology. Nicholas drives our mission to revolutionize school safety through
+                Visionary leader with 15+ years in educational technology. Lionel drives our mission to revolutionize school safety through
                 innovative solutions.
               </p>
               <div className="flex justify-center space-x-3">
@@ -348,7 +348,7 @@ export default function AboutPage() {
               </div>
             </div>
 
-            {/* Ashley */}
+            {/* Johanna */}
             <div className="reveal-card group bg-white/70 backdrop-blur-xl rounded-3xl p-8 shadow-lg shadow-gray-200/50 border border-white/20 hover:shadow-xl hover:-translate-y-2 transition-all duration-500 text-center">
               <div className="relative mb-6">
                 <div className="w-24 h-24 bg-gradient-to-br from-accent-emerald to-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-accent-emerald/25 group-hover:scale-110 transition-transform duration-300">
@@ -362,10 +362,10 @@ export default function AboutPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Ashley Wagner</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Johanna Penn</h3>
               <p className="text-accent-emerald font-semibold mb-4">Chief Financial Officer</p>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                Financial strategist ensuring sustainable growth and operational excellence. Ashley&apos;s expertise keeps us financially strong and
+                Financial strategist ensuring sustainable growth and operational excellence. Johanna&apos;s expertise keeps us financially strong and
                 customer-focused.
               </p>
               <div className="flex justify-center space-x-3">
@@ -388,7 +388,7 @@ export default function AboutPage() {
               </div>
             </div>
 
-            {/* Kira */}
+            {/* Daphne */}
             <div className="reveal-card group bg-white/70 backdrop-blur-xl rounded-3xl p-8 shadow-lg shadow-gray-200/50 border border-white/20 hover:shadow-xl hover:-translate-y-2 transition-all duration-500 text-center">
               <div className="relative mb-6">
                 <div className="w-24 h-24 bg-gradient-to-br from-accent-purple to-purple-600 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-accent-purple/25 group-hover:scale-110 transition-transform duration-300">
@@ -402,10 +402,10 @@ export default function AboutPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Kira Quidort</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Daphne Quidort</h3>
               <p className="text-accent-purple font-semibold mb-4">Chief Technology Officer</p>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                Technology innovator architecting our cutting-edge platform. Kira&apos;s technical expertise ensures our solutions are secure, scalable,
+                Technology innovator architecting our cutting-edge platform. Daphne&apos;s technical expertise ensures our solutions are secure, scalable,
                 and reliable.
               </p>
               <div className="flex justify-center space-x-3">
@@ -442,7 +442,7 @@ export default function AboutPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Eric Quidort</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">John</h3>
               <p className="text-accent-orange font-semibold mb-4">Chief Marketing Officer</p>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
                 Marketing strategist connecting schools with our solutions. Eric&apos;s passion for education drives our outreach and customer success
