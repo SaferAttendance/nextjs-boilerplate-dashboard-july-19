@@ -965,14 +965,14 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Nicholas Wagner</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">Lionel Wagner</h3>
               <p className="mb-3 font-medium text-brand-dark">CEO</p>
               <p className="mb-4 text-sm text-gray-600">Strategic partnerships &amp; vision</p>
               <button
                 onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-brand-blue to-brand-dark py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
-                Contact Nicholas
+                Contact Lionel
               </button>
             </div>
 
@@ -983,14 +983,14 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Ashley Wagner</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">Johanna Wagner</h3>
               <p className="mb-3 font-medium text-accent-emerald">CFO</p>
               <p className="mb-4 text-sm text-gray-600">Pricing &amp; financial planning</p>
               <button
                 onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-emerald to-emerald-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
-                Contact Ashley
+                Contact Johanna
               </button>
             </div>
 
@@ -1001,14 +1001,14 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Kira Quidort</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">Daphne Aurelius </h3>
               <p className="mb-3 font-medium text-accent-purple">CTO</p>
               <p className="mb-4 text-sm text-gray-600">Technical integrations</p>
               <button
                 onClick={sendQuickEmail}
                 className="w-full rounded-lg bg-gradient-to-r from-accent-purple to-purple-600 py-2 text-sm font-medium text-white transition-all duration-300 hover:shadow-md"
               >
-                Contact Kira
+                Contact Daphne
               </button>
             </div>
 
@@ -1019,7 +1019,7 @@ export default function ContactPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="mb-1 text-lg font-bold text-gray-800">Eric Quidort</h3>
+              <h3 className="mb-1 text-lg font-bold text-gray-800">JohnAurelius </h3>
               <p className="mb-3 font-medium text-accent-orange">CMO</p>
               <p className="mb-4 text-sm text-gray-600">Marketing &amp; outreach</p>
               <button
