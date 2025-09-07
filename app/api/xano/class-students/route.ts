@@ -8,7 +8,6 @@ function endpoint() {
   if (direct) return direct.replace(/\/$/, '');
   
   const base = process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '';
-  // This should use the direct URL if available, not append /class_info
   return `${base.replace(/\/$/, '')}/Admin_AllStudentsFromParticularClass`;
 }
 
@@ -42,32 +41,15 @@ export async function GET(req: NextRequest) {
   
   const url = new URL(endpoint());
   
-  // Required parameters - These stay lowercase as shown in Xano
-  url.searchParams.set('district_code', district);
-  url.searchParams.set('school_code', school);
-  
-  // FIXED: Use capital letters for Class_ID to match Xano's expectations
-  url.searchParams.set('Class_ID', classId);
-  
-  // FIXED: Use capital letters for Teacher_Email to match Xano's expectations
-  if (teacherEmail) {
-    url.searchParams.set('Teacher_Email', teacherEmail);
-  }
-  
-  // Add period if provided
-  if (period) {
-    url.searchParams.set('period', period);
-  }
-  
-  // Optional admin email
-  if (adminEmail) {
-    url.searchParams.set('admin_email', adminEmail);
-  }
+  // Send parameters with the capitalization that Xano expects
+  url.searchParams.set('Teacher_Email', teacherEmail);  // Capital T, Capital E
+  url.searchParams.set('Class_ID', classId);            // Capital C, Capital ID
+  url.searchParams.set('district_code', district);      // lowercase
+  url.searchParams.set('school_code', school);          // lowercase
+  url.searchParams.set('period', period);               // lowercase
   
   const headers: HeadersInit = { 
     Accept: 'application/json',
-    'Cache-Control': 'no-store',
-    'Pragma': 'no-cache'
   };
   
   if (process.env.XANO_API_KEY) {
