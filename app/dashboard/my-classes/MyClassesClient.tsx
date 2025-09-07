@@ -1,3 +1,5 @@
+//app/dashboard/my-classes/MyClassesClient.tsx
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
