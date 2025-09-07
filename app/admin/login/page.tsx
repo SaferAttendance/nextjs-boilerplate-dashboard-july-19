@@ -5,28 +5,30 @@ import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
 
-/** Shape returned by our server route /api/admin/check */
-type AdminCheckResponse = {
-  isAdmin: boolean;
-  districtCode: string | null;
-  schoolCode: string | null;
+/** Shape returned by our server route /api/user/verify */
+type UserVerificationResponse = {
   email: string | null;
-  fullName: string | null;
+  full_name: string | null;
+  role: 'admin' | 'teacher' | 'parent' | 'substitute' | null;
+  district_code: string | null;
+  school_code: string | null;
+  sub_assigned: string | null;
+  Phone_ID: string | null;
 };
 
 /** Call our server route (keeps Xano URL/API key server-side) */
-async function checkAdminViaApi(email: string): Promise<AdminCheckResponse> {
-  const res = await fetch(`/api/admin/check?email=${encodeURIComponent(email)}`, {
+async function verifyUserViaApi(email: string): Promise<UserVerificationResponse> {
+  const res = await fetch(`/api/user/verify?email=${encodeURIComponent(email)}`, {
     method: 'GET',
     cache: 'no-store',
   });
 
   if (!res.ok) {
     const msg = await res.text().catch(() => '');
-    throw new Error(msg || `Admin check failed (${res.status})`);
+    throw new Error(msg || `User verification failed (${res.status})`);
   }
 
-  return (await res.json()) as AdminCheckResponse;
+  return (await res.json()) as UserVerificationResponse;
 }
 
 export default function LoginPage() {
@@ -56,25 +58,33 @@ export default function LoginPage() {
     }
 
     try {
-      // 0) Verify admin & get scope (districtCode, schoolCode, fullName, email)
-      let adminProfile: AdminCheckResponse;
+      // 0) Verify user & get complete profile information
+      let userProfile: UserVerificationResponse;
       try {
-        adminProfile = await checkAdminViaApi(email);
+        userProfile = await verifyUserViaApi(email);
       } catch (e: any) {
         throw new Error(
           e?.message ||
-          'Unable to verify your admin status right now. Please try again.'
+          'Unable to verify your account right now. Please try again.'
         );
       }
 
-      // Xano returns email=null for both "not found" and "not admin"
-      if (!adminProfile.email || !adminProfile.isAdmin) {
+      // Check if user exists and has a valid role
+      if (!userProfile.email || !userProfile.role) {
         throw new Error(
-          'This account is not authorized for admin access. If you believe this is a mistake, contact your district admin.'
+          'This account is not authorized for system access. If you believe this is a mistake, contact your administrator.'
         );
       }
 
-      // 1) Firebase sign in (after confirming admin)
+      // Validate role is one of the expected values
+      const validRoles = ['admin', 'teacher', 'parent', 'substitute'];
+      if (!validRoles.includes(userProfile.role)) {
+        throw new Error(
+          'Invalid user role. Please contact your administrator.'
+        );
+      }
+
+      // 1) Firebase sign in (after confirming valid user)
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
@@ -100,14 +110,16 @@ export default function LoginPage() {
         console.warn('Session hydrate failed (continuing):', e);
       }
 
-      // 4) (Optional) keep a client copy for quick reads; server remains source of truth
+      // 4) Store complete user profile for dashboard use
       try {
         sessionStorage.setItem('sa_profile', JSON.stringify({
-          isAdmin: true,
-          districtCode: adminProfile.districtCode,
-          schoolCode: adminProfile.schoolCode,
-          email: adminProfile.email,
-          fullName: adminProfile.fullName,
+          email: userProfile.email,
+          fullName: userProfile.full_name,
+          role: userProfile.role,
+          districtCode: userProfile.district_code,
+          schoolCode: userProfile.school_code,
+          subAssigned: userProfile.sub_assigned,
+          phoneId: userProfile.Phone_ID,
         }));
       } catch {}
 
@@ -175,7 +187,7 @@ export default function LoginPage() {
           <div className="rounded-3xl bg-white p-8 shadow-2xl ring-1 ring-black/5">
             <header className="mb-8 text-center">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-              <p className="text-gray-600">Sign in to your admin dashboard</p>
+              <p className="text-gray-600">Sign in to your dashboard</p>
             </header>
 
             {error && (
@@ -209,7 +221,7 @@ export default function LoginPage() {
                     disabled={isLoading}
                     value={formData.email}
                     onChange={handleInputChange}
-                    placeholder="admin@example.com"
+                    placeholder="user@example.com"
                     className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
                     aria-invalid={!!error}
                   />
@@ -320,7 +332,7 @@ export default function LoginPage() {
               <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
-                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                  d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 616 0z"
                   clipRule="evenodd"
                 />
               </svg>
