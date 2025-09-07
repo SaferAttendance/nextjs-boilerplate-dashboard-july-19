@@ -377,10 +377,10 @@ export default async function DashboardPage({
             </Link>
           )}
 
-          {/* Download Today's Attendance (Admin, Teacher, Sub) */}
+          {/* Download Today's Attendance (Admin, Teacher, Sub) - WITH CONDITIONAL ROUTING */}
           {(isAdmin || isTeacher || isSub) && (
             <Link
-              href="/dashboard/csv"
+              href={(isTeacher || isSub) ? "/dashboard/teacher/csv" : "/dashboard/csv"}
               className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-blue-400 to-blue-600 text-white">
@@ -456,7 +456,7 @@ export default async function DashboardPage({
               className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-blue-400 to-blue-600 text-white">
-                <svg width="20" height="20" viewBox="0 0 24 24  fill='none' stroke='currentColor'">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill='none' stroke='currentColor'>
                   <path d="M12 20l9-9-3-3-9 9-3 1 1-3 9-9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
