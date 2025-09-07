@@ -15,7 +15,6 @@ type XanoTeacherRow = {
   attendance_status?: string;
 };
 
-// Rows returned by /api/xano/class-students
 type StudentRow = {
   id: number;
   created_at?: number;
@@ -41,15 +40,13 @@ type TeacherVM = {
   employeeId?: string;
   classes: Array<{
     name: string;
-    code: string;          // class_id
-    schedule?: string;     // derived from period
+    code: string;
+    schedule?: string;
     room?: string;
-    students: number;      // count of rows for this class_id
+    students: number;
     attendance?: number | null;
   }>;
 };
-
-/* ---------- Styling helpers ---------- */
 
 const cardGradientColors = [
   'from-blue-400 to-blue-600',
@@ -68,8 +65,6 @@ function statusPillClasses(status?: string) {
 
 const normalizeEmail = (v?: string) => (v || '').trim().toLowerCase();
 
-/* ---------- Component ---------- */
-
 interface MyClassesClientProps {
   teacherEmail: string;
   teacherName: string;
@@ -80,20 +75,16 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
   const [error, setError] = useState<string | null>(null);
   const [teacher, setTeacher] = useState<TeacherVM | null>(null);
 
-  // Modal + records
   const [modalClass, setModalClass] = useState<TeacherVM['classes'][number] | null>(null);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState<string | null>(null);
   const [records, setRecords] = useState<StudentRow[] | null>(null);
 
-  // Convert rows -> TeacherVM (dedupe by class_id)
   function toTeacherVM(rows: XanoTeacherRow[], name: string, email: string): TeacherVM {
     const byClass = new Map<string, { name: string; code: string; period?: string | number; students: number }>();
-
     for (const r of rows) {
       const key = r.class_id || `${r.class_name ?? ''}|${r.period ?? ''}`;
       if (!key) continue;
-
       if (byClass.has(key)) {
         byClass.get(key)!.students += 1;
       } else {
@@ -105,7 +96,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
         });
       }
     }
-
     const classes = Array.from(byClass.values()).map((c) => ({
       name: c.name,
       code: c.code,
@@ -114,15 +104,12 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       students: c.students,
       attendance: null,
     }));
-
-    // Optional: sort by period if present, then name
     classes.sort((a, b) => {
       const ap = (a.schedule || '').toLowerCase();
       const bp = (b.schedule || '').toLowerCase();
       if (ap && bp && ap !== bp) return ap.localeCompare(bp, undefined, { numeric: true });
       return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
     });
-
     return {
       name,
       email,
@@ -133,33 +120,25 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
     };
   }
 
-  /* ---------- Load Teacher's Classes ---------- */
-
   useEffect(() => {
     const loadClasses = async () => {
       setLoading(true);
       setError(null);
-
       try {
         const res = await fetch(`/api/xano/teachers?q=${encodeURIComponent(teacherEmail)}`, {
           method: 'GET',
           cache: 'no-store',
         });
-
         const payload = await res.json();
         if (!res.ok) {
           throw new Error(payload?.error || `Failed to load classes (${res.status})`);
         }
-
         const rows: XanoTeacherRow[] = Array.isArray(payload)
           ? payload
           : payload?.records ?? [];
-
-        // ✨ keep only rows for the exact logged-in email
         const filtered = rows.filter(
           (r) => normalizeEmail(r.teacher_email) === normalizeEmail(teacherEmail)
         );
-
         if (!filtered.length) {
           setTeacher({
             name: teacherName,
@@ -182,8 +161,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
     loadClasses();
   }, [teacherEmail, teacherName]);
 
-  /* ---------- Modal actions ---------- */
-
   const closeModal = () => {
     setModalClass(null);
     setRecords(null);
@@ -193,40 +170,32 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
 
   const viewAttendanceRecords = async () => {
     if (!teacher || !modalClass) return;
-
     setRecordsLoading(true);
     setRecordsError(null);
     setRecords(null);
-
     try {
-      // Extract period number from schedule (e.g., "Period 3" -> "3")
       let period = '';
       if (modalClass.schedule) {
         const match = modalClass.schedule.match(/Period\s+(\d+)/i);
-        if (match) period = match[1];
+        if (match) {
+          period = match[1];
+        }
       }
-
       let url = `/api/xano/class-students?class_id=${encodeURIComponent(
         modalClass.code
       )}&teacher_email=${encodeURIComponent(teacher.email)}`;
-
       if (period) url += `&period=${period}`;
-
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
-
       if (!res.ok) {
         throw new Error(payload?.error || `Failed (${res.status})`);
       }
-
       const items: StudentRow[] = Array.isArray(payload)
         ? payload
         : payload?.records ?? [];
-
       items.sort((a, b) =>
         (a.student_name || '').localeCompare(b.student_name || '')
       );
-
       setRecords(items);
     } catch (e: any) {
       setRecordsError(e?.message || 'Failed to load records');
@@ -234,8 +203,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       setRecordsLoading(false);
     }
   };
-
-  /* ---------- UI ---------- */
 
   if (loading) {
     return (
@@ -271,7 +238,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       <div className="text-center py-16">
         <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
           </svg>
         </div>
         <h3 className="text-xl font-semibold text-gray-800 mb-2">No Classes Found</h3>
@@ -519,4 +486,3 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
     </>
   );
 }
-
