@@ -1,10 +1,11 @@
+// app/dashboard/my-classes/MyClassesClient.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
 
 /* ---------- Types ---------- */
 
-// Rows returned by /api/xano/teachers (one row per class)
+// Rows returned by /api/xano/teachers (one row per student-in-class)
 type XanoTeacherRow = {
   id: number;
   teacher_name?: string;
@@ -33,7 +34,6 @@ type StudentRow = {
   teacher_name?: string;
 };
 
-// View model for the selected teacher
 type TeacherVM = {
   name: string;
   email: string;
@@ -43,10 +43,10 @@ type TeacherVM = {
   classes: Array<{
     name: string;
     code: string;          // class_id
-    schedule?: string;     // derived from period if present
-    room?: string;         // optional
+    schedule?: string;     // derived from period
+    room?: string;
     students: number;      // count of rows for this class_id
-    attendance?: number | null; // placeholder for later
+    attendance?: number | null;
   }>;
 };
 
@@ -60,13 +60,15 @@ const cardGradientColors = [
   'from-pink-400 to-pink-600',
 ];
 
-// Map attendance status -> pill colors
 function statusPillClasses(status?: string) {
   const s = (status || '').toString().trim().toLowerCase();
   if (s === 'present') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
   if (s === 'absent')  return 'bg-red-100 text-red-800 ring-1 ring-red-200';
   return 'bg-gray-100 text-gray-800 ring-1 ring-gray-200';
 }
+
+// small helpers
+const normalizeEmail = (v?: string) => (v || '').trim().toLowerCase();
 
 /* ---------- Component ---------- */
 
@@ -80,22 +82,15 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
   const [error, setError] = useState<string | null>(null);
   const [teacher, setTeacher] = useState<TeacherVM | null>(null);
 
-  // Modal class card + attendance records
+  // Modal + records
   const [modalClass, setModalClass] = useState<TeacherVM['classes'][number] | null>(null);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [recordsError, setRecordsError] = useState<string | null>(null);
   const [records, setRecords] = useState<StudentRow[] | null>(null);
 
-  /* ---------- Helpers ---------- */
-
-  // Convert class-rows -> TeacherVM for one teacher (dedupe classes by class_id)
+  // Convert rows -> TeacherVM (dedupe by class_id)
   function toTeacherVM(rows: XanoTeacherRow[], name: string, email: string): TeacherVM {
-    const byClass = new Map<string, { 
-      name: string; 
-      code: string; 
-      period?: string | number; 
-      students: number 
-    }>();
+    const byClass = new Map<string, { name: string; code: string; period?: string | number; students: number }>();
 
     for (const r of rows) {
       const key = r.class_id || `${r.class_name ?? ''}|${r.period ?? ''}`;
@@ -122,6 +117,14 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       attendance: null,
     }));
 
+    // Optional: sort by period if present, then name
+    classes.sort((a, b) => {
+      const ap = (a.schedule || '').toLowerCase();
+      const bp = (b.schedule || '').toLowerCase();
+      if (ap && bp && ap !== bp) return ap.localeCompare(bp, undefined, { numeric: true });
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+
     return {
       name,
       email,
@@ -132,7 +135,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
     };
   }
 
-  /* ---------- Load Teacher's Classes on Mount ---------- */
+  /* ---------- Load Teacher's Classes ---------- */
 
   useEffect(() => {
     const loadClasses = async () => {
@@ -140,7 +143,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
       setError(null);
 
       try {
-        // Search by email to get all classes for this teacher
+        // Search can be fuzzy; we'll filter to exact email below
         const res = await fetch(`/api/xano/teachers?q=${encodeURIComponent(teacherEmail)}`, {
           method: 'GET',
           cache: 'no-store',
@@ -155,7 +158,12 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
           ? payload
           : payload?.records ?? [];
 
-        if (!rows || rows.length === 0) {
+        // ✨ CRITICAL: keep only rows for the exact logged-in email
+        const filtered = rows.filter(
+          (r) => normalizeEmail(r.teacher_email) === normalizeEmail(teacherEmail)
+        );
+
+        if (!filtered.length) {
           setTeacher({
             name: teacherName,
             email: teacherEmail,
@@ -165,7 +173,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
             classes: [],
           });
         } else {
-          setTeacher(toTeacherVM(rows, teacherName, teacherEmail));
+          setTeacher(toTeacherVM(filtered, teacherName, teacherEmail));
         }
       } catch (err: any) {
         setError(err?.message || 'Failed to load classes');
@@ -203,14 +211,11 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
         }
       }
 
-      // Build URL with period if available
       let url = `/api/xano/class-students?class_id=${encodeURIComponent(
         modalClass.code
       )}&teacher_email=${encodeURIComponent(teacher.email)}`;
-      
-      if (period) {
-        url += `&period=${period}`;
-      }
+
+      if (period) url += `&period=${period}`;
 
       const res = await fetch(url, { method: 'GET', cache: 'no-store' });
       const payload = await res.json();
@@ -223,7 +228,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
         ? payload
         : payload?.records ?? [];
 
-      // Sort by student name
       items.sort((a, b) =>
         (a.student_name || '').localeCompare(b.student_name || '')
       );
@@ -238,17 +242,15 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
 
   /* ---------- UI ---------- */
 
-  // Loading state
   if (loading) {
     return (
       <div className="text-center py-16">
-        <div className="w-12 h-12 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <div className="w-12 h-12 border-4 border-brand-blue border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-gray-600 font-medium">Loading your classes...</p>
       </div>
     );
   }
 
-  // Error state
   if (error && !teacher) {
     return (
       <div className="text-center py-16">
@@ -269,7 +271,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
     );
   }
 
-  // No classes
   if (teacher && teacher.classes.length === 0) {
     return (
       <div className="text-center py-16">
@@ -288,9 +289,9 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
 
   return (
     <>
-      {/* Teacher Info Card */}
       {teacher && (
         <>
+          {/* Teacher Info Card */}
           <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-8 mb-8">
             <div className="flex items-center space-x-6">
               <div className="w-20 h-20 bg-gradient-to-r from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -317,7 +318,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
             </div>
           </div>
 
-          {/* Classes Section */}
+          {/* Classes */}
           <div>
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-gray-800">Your Classes</h3>
@@ -327,7 +328,6 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
               </div>
             </div>
 
-            {/* Class Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {teacher.classes.map((classInfo, idx) => (
                 <div
@@ -352,7 +352,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth="2"
-                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253"
                         />
                       </svg>
                     </div>
@@ -392,7 +392,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
         </>
       )}
 
-      {/* Class Details Modal (with records viewer) */}
+      {/* Class Details Modal */}
       {modalClass && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -450,7 +450,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
                 </button>
               </div>
 
-              {/* Records panel */}
+              {/* Records */}
               <div className="bg-white border rounded-xl">
                 {recordsLoading && (
                   <div className="py-10 text-center">
@@ -473,7 +473,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
                         {records.length} student{records.length === 1 ? '' : 's'} enrolled
                       </p>
                     </div>
-                    
+
                     {records.length === 0 ? (
                       <div className="py-6 px-4 text-center text-sm text-gray-600">
                         No students found for this class. Try refreshing.
@@ -504,9 +504,7 @@ export default function MyClassesClient({ teacherEmail, teacherName }: MyClasses
                                   {row.student_id ?? '—'}
                                 </td>
                                 <td className="px-6 py-3 text-sm">
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(row.attendance_status)}`}
-                                  >
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusPillClasses(row.attendance_status)}`}>
                                     {row.attendance_status || 'Pending'}
                                   </span>
                                 </td>
