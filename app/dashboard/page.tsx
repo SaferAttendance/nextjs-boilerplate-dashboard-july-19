@@ -7,12 +7,14 @@ import RoleViewToggle from '@/components/RoleViewToggle';
 
 export const runtime = 'nodejs'; // firebase-admin needs Node runtime
 
-type XanoAdmin = {
-  full_name?: string;
-  fullname?: string;
-  fullName?: string;
-  name?: string;
-  school_id?: string | number;
+type StoredUserProfile = {
+  email: string;
+  fullName: string;
+  role: 'admin' | 'teacher' | 'parent' | 'substitute';
+  districtCode: string | null;
+  schoolCode: string | null;
+  subAssigned: string | null;
+  phoneId: string | null;
 };
 
 type RolePreview = 'admin' | 'teacher' | 'parent' | 'sub';
@@ -49,51 +51,49 @@ export default async function DashboardPage({
     redirect('/admin/login');
   }
 
-  // Prefer cookie set by /api/session GET
-  let fullName =
-    jar.get('full_name')?.value ||
-    jar.get('fullname')?.value ||
-    'Admin';
+  // Get user profile from cookies (set by the login process via /api/session)
+  let userProfile: StoredUserProfile | null = null;
+  let fullName = 'User';
+  let actualUserRole: RolePreview = 'admin';
 
-  // If not present, fetch once from Xano to populate the greeting
-  if (!jar.get('full_name')?.value && !jar.get('fullname')?.value) {
-    try {
-      const adminCheckUrl =
-        process.env.XANO_ADMIN_CHECK_URL ||
-        process.env.NEXT_PUBLIC_XANO_ADMIN_CHECK_URL ||
-        `${(process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '')
-          .replace(/\/$/, '')}/admin_dashboard_checkAdmin`;
+  // Try to get user profile from cookies first (server-side)
+  const profileEmail = jar.get('email')?.value;
+  const profileFullName = jar.get('full_name')?.value || jar.get('fullname')?.value;
+  const profileRole = jar.get('role')?.value;
+  const profileDistrictCode = jar.get('district_code')?.value;
+  const profileSchoolCode = jar.get('school_code')?.value;
 
-      const url = `${adminCheckUrl}?email=${encodeURIComponent(email!)}`;
-
-      const headers: HeadersInit = { Accept: 'application/json' };
-      if (process.env.XANO_API_KEY) {
-        headers['Authorization'] = `Bearer ${process.env.XANO_API_KEY}`;
-      }
-
-      const res = await fetch(url, { method: 'GET', headers, cache: 'no-store' });
-      if (res.ok) {
-        const payload = await res.json();
-        const record: XanoAdmin | undefined = Array.isArray(payload) ? payload[0] : payload;
-        fullName = String(
-          record?.full_name ||
-            record?.fullname ||
-            record?.fullName ||
-            record?.name ||
-            fullName
-        );
-      }
-    } catch {
-      // Not fatal
-    }
+  if (profileEmail && profileFullName && profileRole) {
+    userProfile = {
+      email: profileEmail,
+      fullName: profileFullName,
+      role: profileRole as 'admin' | 'teacher' | 'parent' | 'substitute',
+      districtCode: profileDistrictCode || null,
+      schoolCode: profileSchoolCode || null,
+      subAssigned: jar.get('sub_assigned')?.value || null,
+      phoneId: jar.get('phone_id')?.value || null,
+    };
+    fullName = profileFullName;
+    actualUserRole = normalizeRole(profileRole);
   }
 
+  // If no profile in cookies, we'll need to handle this on the client side
+  // The sessionStorage will be read by client-side code if needed
+
   // ----- Role preview toggle support -----
-  // 1) use ?view=admin|teacher|parent|sub to preview
-  // 2) fallback to cookie "role" if present
+  // 1) For admins: allow ?view=admin|teacher|parent|sub to preview other roles
+  // 2) For non-admins: always show their actual role (ignore view parameter)
   const sp = (await searchParams) ?? {};
   const rawView = Array.isArray(sp.view) ? sp.view[0] : sp.view;
-  const previewRole = normalizeRole(rawView ?? jar.get('role')?.value);
+  
+  let previewRole: RolePreview;
+  if (actualUserRole === 'admin' && rawView) {
+    // Admin can preview any role
+    previewRole = normalizeRole(rawView);
+  } else {
+    // Non-admins see their actual role, admins default to admin view
+    previewRole = actualUserRole;
+  }
 
   const isAdmin   = previewRole === 'admin';
   const isTeacher = previewRole === 'teacher';
@@ -120,15 +120,17 @@ export default async function DashboardPage({
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Role preview toggle */}
-            <RoleViewToggle current={previewRole} />
+            {/* Role preview toggle - only show for admins */}
+            {actualUserRole === 'admin' && (
+              <RoleViewToggle current={previewRole} />
+            )}
 
             <div className="hidden sm:flex items-center space-x-2">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">System Online</span>
             </div>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-300 to-blue-500 text-sm font-medium text-white">
-              {fullName?.[0]?.toUpperCase() || 'A'}
+              {fullName?.[0]?.toUpperCase() || 'U'}
             </div>
             <LogoutButton />
           </div>
@@ -141,14 +143,33 @@ export default async function DashboardPage({
           <h2 className="text-3xl font-bold text-gray-900">
             Welcome back, {fullName}
           </h2>
-          <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700">
-            Viewing as
-            <span className="rounded-md bg-gray-100 px-2 py-0.5 font-medium capitalize">
-              {previewRole}
+          {/* Only show role indicator if admin is previewing a different role */}
+          {actualUserRole === 'admin' && previewRole !== 'admin' && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700">
+              Previewing as
+              <span className="rounded-md bg-gray-100 px-2 py-0.5 font-medium capitalize">
+                {previewRole}
+              </span>
             </span>
-          </span>
+          )}
         </div>
         <p className="text-gray-600">Choose a quick action to get started.</p>
+        
+        {/* Client-side script to handle missing profile */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                // Check if we have user profile in sessionStorage, redirect to login if not
+                const profile = sessionStorage.getItem('sa_profile');
+                if (!profile && !${JSON.stringify(!!userProfile)}) {
+                  console.warn('No user profile found, redirecting to login');
+                  window.location.href = '/admin/login';
+                }
+              })();
+            `,
+          }}
+        />
       </section>
 
       {/* Quick Actions */}
@@ -413,7 +434,7 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">My Children</h3>
-              <p className="mt-1 text-sm text-gray-600">See your children’s profiles, classes, and attendance.</p>
+              <p className="mt-1 text-sm text-gray-600">See your children's profiles, classes, and attendance.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -435,11 +456,11 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">Today&apos;s Attendance</h3>
-              <p className="mt-1 text-sm text-gray-600">View today’s attendance for your children.</p>
+              <p className="mt-1 text-sm text-gray-600">View today's attendance for your children.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
             </Link>
@@ -458,11 +479,11 @@ export default async function DashboardPage({
                 </svg>
               </div>
               <h3 className="text-base font-semibold text-gray-900">Class List</h3>
-              <p className="mt-1 text-sm text-gray-600">See each child’s current classes and teachers.</p>
+              <p className="mt-1 text-sm text-gray-600">See each child's current classes and teachers.</p>
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
             </Link>
@@ -484,7 +505,7 @@ export default async function DashboardPage({
               <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
                 Open
                 <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
             </Link>
