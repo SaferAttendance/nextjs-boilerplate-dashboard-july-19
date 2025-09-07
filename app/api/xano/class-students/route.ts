@@ -4,15 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 function endpoint() {
-  const direct = process.env.XANO_CLASS_INFO_URL || process.env.XANO_CLASS_STUDENTS_URL;
+  const direct = process.env.XANO_CLASS_STUDENTS_URL || process.env.XANO_CLASS_INFO_URL;
   if (direct) return direct.replace(/\/$/, '');
   
-  const base =
-    process.env.XANO_BASE_URL ||
-    process.env.NEXT_PUBLIC_XANO_BASE ||
-    '';
-  
-  return `${base.replace(/\/$/, '')}/class_info`;
+  const base = process.env.XANO_BASE_URL || process.env.NEXT_PUBLIC_XANO_BASE || '';
+  // This should use the direct URL if available, not append /class_info
+  return `${base.replace(/\/$/, '')}/Admin_AllStudentsFromParticularClass`;
 }
 
 function readCookie(req: NextRequest, name: string): string | undefined {
@@ -37,8 +34,7 @@ export async function GET(req: NextRequest) {
   
   const district = readCookie(req, 'district_code');
   const school = readCookie(req, 'school_code');
-  const adminEmail =
-    readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
+  const adminEmail = readCookie(req, 'email') || readCookie(req, 'session_email') || undefined;
   
   if (!district || !school) {
     return NextResponse.json({ error: 'Missing admin scope' }, { status: 401 });
@@ -46,34 +42,27 @@ export async function GET(req: NextRequest) {
   
   const url = new URL(endpoint());
   
-  // Required parameters
+  // Required parameters - These stay lowercase as shown in Xano
   url.searchParams.set('district_code', district);
   url.searchParams.set('school_code', school);
   
-  // Set class identifier
-  if (classId.match(/^\d+$/) || classId.startsWith('CLS')) {
-    url.searchParams.set('class_id', classId);
-  } else {
-    url.searchParams.set('class_name', classId);
+  // FIXED: Use capital letters for Class_ID to match Xano's expectations
+  url.searchParams.set('Class_ID', classId);
+  
+  // FIXED: Use capital letters for Teacher_Email to match Xano's expectations
+  if (teacherEmail) {
+    url.searchParams.set('Teacher_Email', teacherEmail);
   }
   
-  // Add period if provided - THIS IS LIKELY REQUIRED
+  // Add period if provided
   if (period) {
     url.searchParams.set('period', period);
   }
   
-  // Optional parameters
-  if (teacherEmail) {
-    url.searchParams.set('teacher_email', teacherEmail);
-  }
-  
+  // Optional admin email
   if (adminEmail) {
     url.searchParams.set('admin_email', adminEmail);
   }
-  
-  // Cache busting
-  url.searchParams.set('_ts', Date.now().toString());
-  url.searchParams.set('_rand', Math.random().toString(36));
   
   const headers: HeadersInit = { 
     Accept: 'application/json',
