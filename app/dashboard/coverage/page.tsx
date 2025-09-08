@@ -1,4 +1,3 @@
-// app/dashboard/coverage/page.tsx
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import RoleViewToggle from '@/components/RoleViewToggle';
@@ -16,6 +15,10 @@ function normalizeRole(input?: string): RolePreview {
   return 'admin';
 }
 
+function displayOrNA(v?: string | null) {
+  return v && v.trim().length ? v : 'N/A';
+}
+
 export default async function CoveragePage({
   searchParams,
 }: {
@@ -26,7 +29,7 @@ export default async function CoveragePage({
   const rawToken = jar.get('token')?.value ?? jar.get('sa_session')?.value;
   if (!rawToken) redirect('/admin/login');
 
-  // Verify token
+  // Verify token (server-side)
   try {
     const { getAdminAuth } = await import('@/lib/firebaseAdmin');
     const decoded = await getAdminAuth().verifyIdToken(rawToken!);
@@ -36,7 +39,7 @@ export default async function CoveragePage({
     redirect('/admin/login');
   }
 
-  // Role from cookies
+  // Profile bits from cookies
   const fullName =
     jar.get('full_name')?.value ??
     jar.get('fullname')?.value ??
@@ -52,6 +55,7 @@ export default async function CoveragePage({
 
   return (
     <main className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
@@ -66,22 +70,25 @@ export default async function CoveragePage({
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Allow Admin to preview other roles exactly like the dashboard */}
             {actualUserRole === 'admin' && <RoleViewToggle current={previewRole} />}
           </div>
         </div>
       </header>
 
+      {/* Intro */}
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-3xl font-bold text-gray-900">
             {previewRole === 'admin'
-              ? 'Admin Coverage Manager'
+              ? 'Coverage Dashboard'
               : previewRole === 'teacher'
               ? 'My Time Off & Coverage'
               : previewRole === 'sub'
-              ? 'Available Coverage Jobs'
+              ? 'Available Jobs'
               : 'Coverage'}
           </h2>
+
           {actualUserRole === 'admin' && previewRole !== 'admin' && (
             <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700">
               Previewing as
@@ -91,18 +98,19 @@ export default async function CoveragePage({
             </span>
           )}
         </div>
+
         <p className="text-gray-600">
           {previewRole === 'admin'
-            ? 'Manage urgent openings, rotation fairness, approvals and payroll exports.'
+            ? 'Manage time-off requests, urgent openings, fair rotation, and payroll-ready logs.'
             : previewRole === 'teacher'
-            ? 'Request time off, track approvals, and respond to live coverage alerts.'
+            ? 'Request time off, upload lesson plans, and respond to live coverage alerts.'
             : previewRole === 'sub'
-            ? 'Browse available jobs and accept coverage offers in real time.'
-            : ''}
+            ? 'Find and accept substitute teaching opportunities and track your earnings.'
+            : displayOrNA('')}
         </p>
       </section>
 
-      {/* Renders the correct view. Drop your prototype UI inside CoverageHub. */}
+      {/* Role-specific UI */}
       <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
         <CoverageHub role={previewRole} fullName={fullName} />
       </section>
