@@ -401,6 +401,37 @@ export default async function DashboardPage({
             </Link>
           )}
 
+          {/* Coverage Management - Role-specific */}
+          {(isAdmin || isTeacher || isSub) && (
+            <Link
+              href="/dashboard/coverage"
+              className="group rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            >
+              <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-purple-400 to-purple-600 text-white">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 16l2 2 4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-gray-900">
+                {isAdmin ? 'Coverage Management Center' : 
+                 isTeacher ? 'My Coverage & Earnings' : 
+                 'Coverage Opportunities'}
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                {isAdmin ? 'Manage substitute assignments, emergency coverage, and track payroll.' :
+                 isTeacher ? 'View coverage opportunities, track earnings, and manage time off.' :
+                 'Browse available coverage assignments and track your earnings.'}
+              </p>
+              <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700">
+                Open
+                <svg className="transition group-hover:translate-x-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M9 5l7 7-7 7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </Link>
+          )}
+
           {/* ---- TEACHER & SUB ONLY ---- */}
 
           {/* View My Classes (Teacher, Sub) */}
