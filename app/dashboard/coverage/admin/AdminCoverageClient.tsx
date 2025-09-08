@@ -213,14 +213,14 @@ export default function AdminCoverageClient({
       {showHistoryModal && (
         <CoverageHistoryModal
           onClose={() => setShowHistoryModal(false)}
-          onExport={(format) => pushToast(`Exporting history as ${format}...`, 'success')}
+          onExport={(format: string) => pushToast(`Exporting history as ${format}...`, 'success')}
         />
       )}
 
       {showCreateOpeningModal && (
         <CreateOpeningModal
           onClose={() => setShowCreateOpeningModal(false)}
-          onCreate={(type) => {
+          onCreate={(type: string) => {
             pushToast(
               type === 'emergency' 
                 ? 'Emergency opening created! Notifications sent.' 
@@ -293,6 +293,25 @@ export default function AdminCoverageClient({
   );
 }
 
+// Type definitions for AdminView
+type AdminViewProps = {
+  uncoveredCount: number;
+  availableCount: number;
+  urgentTimerText: string;
+  emergencyAssign: (classId: string) => void;
+  emergencyBatchAssign: () => void;
+  markTeacherAbsent: () => void;
+  viewAvailableTeachers: () => void;
+  pushToast: (message: string, type?: 'success' | 'error') => void;
+  setAvailableCount: (count: number) => void;
+  emergencyMode: boolean;
+  toggleEmergencyMode: () => void;
+  rotationData: Record<string, Teacher[]>;
+  showHistoryModal: () => void;
+  showCreateOpeningModal: () => void;
+  showDailyScheduleModal: () => void;
+};
+
 // Main Admin View Component
 function AdminView({
   uncoveredCount,
@@ -310,7 +329,7 @@ function AdminView({
   showHistoryModal,
   showCreateOpeningModal,
   showDailyScheduleModal,
-}: any) {
+}: AdminViewProps) {
   return (
     <div className="space-y-6">
       {/* Status Overview */}
@@ -588,8 +607,35 @@ function AdminView({
   );
 }
 
+// Modal Component Type Definitions
+type EmergencyBatchAssignModalProps = {
+  teachers: Teacher[];
+  onClose: () => void;
+  onAssign: () => void;
+};
+
+type MarkTeacherAbsentModalProps = {
+  teachers: Teacher[];
+  onClose: () => void;
+  onMarkAbsent: (teacherId: string) => void;
+};
+
+type CoverageHistoryModalProps = {
+  onClose: () => void;
+  onExport: (format: string) => void;
+};
+
+type CreateOpeningModalProps = {
+  onClose: () => void;
+  onCreate: (type: string) => void;
+};
+
+type DailyScheduleModalProps = {
+  onClose: () => void;
+};
+
 // Modal Components
-function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: any) {
+function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBatchAssignModalProps) {
   const available = teachers.filter((t: Teacher) => t.status === 'free');
   
   return (
@@ -633,7 +679,7 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: any) {
   );
 }
 
-function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: any) {
+function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacherAbsentModalProps) {
   const [selectedTeacher, setSelectedTeacher] = useState('');
   
   return (
@@ -682,7 +728,7 @@ function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: any) {
   );
 }
 
-function CoverageHistoryModal({ onClose, onExport }: any) {
+function CoverageHistoryModal({ onClose, onExport }: CoverageHistoryModalProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
@@ -745,7 +791,7 @@ function CoverageHistoryModal({ onClose, onExport }: any) {
   );
 }
 
-function CreateOpeningModal({ onClose, onCreate }: any) {
+function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
   const [openingType, setOpeningType] = useState('standard');
   
   return (
@@ -798,10 +844,6 @@ function CreateOpeningModal({ onClose, onCreate }: any) {
     </div>
   );
 }
-
-type DailyScheduleModalProps = {
-  onClose: () => void;
-};
 
 function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
   return (
