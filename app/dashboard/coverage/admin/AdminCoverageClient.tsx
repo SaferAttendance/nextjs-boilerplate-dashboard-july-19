@@ -799,7 +799,11 @@ function CreateOpeningModal({ onClose, onCreate }: any) {
   );
 }
 
-function DailyScheduleModal({ onClose }: any) {
+type DailyScheduleModalProps = {
+  onClose: () => void;
+};
+
+function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
