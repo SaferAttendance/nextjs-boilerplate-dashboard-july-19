@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
 
@@ -50,6 +50,17 @@ function safeNextPath(next: string | null): string | null {
   return next;
 }
 
+/** Read `?next=` safely from the browser URL (no useSearchParams hook) */
+function getNextFromWindow(): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const sp = new URLSearchParams(window.location.search);
+    return safeNextPath(sp.get('next'));
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -57,7 +68,6 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +114,7 @@ export default function LoginPage() {
         const userCredential = await signInWithEmailAndPassword(auth, email, formData.password);
 
         // 2) Create httpOnly session cookie on server
-        // IMPORTANT: force refresh token so we don't start with a near-expired cached token
+        // Force refresh token so we don't start with a near-expired cached token
         const idToken = await userCredential.user.getIdToken(true);
 
         const sessionRes = await fetch('/api/session', {
@@ -153,7 +163,7 @@ export default function LoginPage() {
           );
 
           // cookies read by server components (dashboard)
-          setCookie('role', role, maxAge); // may be 'sub' or 'substitute' — dashboard normalizes
+          setCookie('role', role, maxAge);
           setCookie('full_name', fullName, maxAge);
           setCookie('fullname', fullName, maxAge);
           setCookie('email', userProfile.email ?? email, maxAge);
@@ -165,12 +175,11 @@ export default function LoginPage() {
           /* non-fatal */
         }
 
-        // 5) Go to dashboard (force the correct preview immediately)
+        // 5) Redirect: honor ?next= if present
         const r = (userProfile.role || '').toLowerCase();
-        const view = r === 'substitute' || r === 'sub' ? 'sub' : r; // ensure sub lands on ?view=sub
+        const view = r === 'substitute' || r === 'sub' ? 'sub' : r;
 
-        // Honor next redirect if present (set by middleware)
-        const nextParam = safeNextPath(searchParams.get('next'));
+        const nextParam = getNextFromWindow();
         if (nextParam) {
           if (nextParam.startsWith('/dashboard')) {
             const url = new URL(nextParam, window.location.origin);
@@ -194,7 +203,7 @@ export default function LoginPage() {
         setIsLoading(false);
       }
     },
-    [formData.email, formData.password, rememberMe, router, searchParams]
+    [formData.email, formData.password, rememberMe, router]
   );
 
   return (
@@ -219,8 +228,7 @@ export default function LoginPage() {
           </div>
           <h2 className="text-4xl font-bold tracking-tight drop-shadow-sm">Safer Attendance</h2>
           <p className="mt-3 text-white/90 leading-relaxed">
-            Ensuring safety one class at a time while promoting attendance through innovative
-            technology.
+            Ensuring safety one class at a time while promoting attendance through innovative technology.
           </p>
           <div className="mt-8 flex items-center gap-6 text-white/80">
             <div className="flex items-center gap-2">
@@ -260,17 +268,9 @@ export default function LoginPage() {
             </header>
 
             {error && (
-              <div
-                role="alert"
-                aria-live="polite"
-                className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
-              >
+              <div role="alert" aria-live="polite" className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
                 <div className="flex items-center text-red-700">
-                  <svg
-                    className="mr-2 h-5 w-5 text-red-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
+                  <svg className="mr-2 h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                     <path
                       fillRule="evenodd"
                       d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -302,11 +302,7 @@ export default function LoginPage() {
                     className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
                     aria-invalid={!!error}
                   />
-                  <svg
-                    className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
+                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
                     <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
                   </svg>
@@ -332,16 +328,8 @@ export default function LoginPage() {
                     className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 pr-12 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
                     aria-invalid={!!error}
                   />
-                  <svg
-                    className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                      clipRule="evenodd"
-                    />
+                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                   </svg>
 
                   <button
