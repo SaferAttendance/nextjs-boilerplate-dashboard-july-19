@@ -1,17 +1,92 @@
 // lib/xano/api.ts
-// Centralized Xano API service for all coverage operations
+export interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  rotation_position: number | null;
+  days_since_last: number;
+  status: 'free' | 'covering' | 'absent';
+  hours_this_month: number;
+  amount_this_month: number;
+}
 
-const XANO_API_BASE = process.env.NEXT_PUBLIC_XANO_API_URL || 'https://your-instance.xano.io/api:your-api';
+export interface CoverageRequest {
+  id: string;
+  class_id: string;
+  class_name: string;
+  start_time: string;
+  end_time: string;
+  date: string;
+  status: 'uncovered' | 'assigned' | 'completed';
+  urgent: boolean;
+  assigned_teacher_id?: string;
+  assigned_teacher_name?: string;
+}
+
+export interface CoverageHistoryEntry {
+  id: string;
+  date: string;
+  teacher_name: string;
+  class_name: string;
+  duration_hours: number;
+  type: 'emergency' | 'planned';
+  amount: number;
+}
+
+export interface TimeOffRequest {
+  id: string;
+  teacher_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'denied';
+  notes?: string;
+}
+
+export interface CoverageLog {
+  id: string;
+  coverage_id: string;
+  date: string;
+  class_name: string;
+  duration_hours: number;
+  amount: number;
+}
+
+export interface Substitute {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  status: 'active' | 'inactive';
+  available: boolean;
+}
+
+const XANO_API_BASE = process.env.NEXT_PUBLIC_XANO_API_URL;
 const XANO_API_KEY = process.env.NEXT_PUBLIC_XANO_API_KEY;
 
-// Helper function for API calls
-async function xanoFetch(endpoint: string, options: RequestInit = {}) {
-  const url = `${XANO_API_BASE}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${XANO_API_KEY}`,
-    ...options.headers,
+/**
+ * IMPORTANT:
+ * - If XANO_API_KEY is NOT set (public endpoints), we do NOT send Authorization.
+ * - This prevents “Bearer undefined” causing auth failures.
+ */
+async function xanoFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  if (!XANO_API_BASE) {
+    throw new Error('XANO_API_URL not configured');
+  }
+
+  const url = `${XANO_API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.headers ? (options.headers as Record<string, string>) : {}),
   };
+
+  // Only attach Authorization if a real key exists
+  if (XANO_API_KEY && XANO_API_KEY.trim().length > 0) {
+    headers.Authorization = `Bearer ${XANO_API_KEY}`;
+  }
 
   const response = await fetch(url, {
     ...options,
@@ -19,365 +94,146 @@ async function xanoFetch(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`Xano API error: ${response.status}`);
+    const text = await response.text().catch(() => '');
+    throw new Error(`Xano API error (${response.status}): ${text || response.statusText}`);
   }
 
   return response.json();
 }
 
-// ============= SHARED DATA TYPES =============
-export interface CoverageRequest {
-  id: string;
-  class_id: string;
-  class_name: string;
-  teacher_id: string;
-  teacher_name: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  room: string;
-  students: number;
-  subject: string;
-  grade: string;
-  status: 'uncovered' | 'pending' | 'covered' | 'completed';
-  substitute_id?: string;
-  substitute_name?: string;
-  pay_amount: number;
-  urgent: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Teacher {
-  id: string;
-  name: string;
-  email: string;
-  department: string;
-  days_since_last: number;
-  position: number | null;
-  status: 'free' | 'covering' | 'absent';
-  hours_this_month: number;
-  amount_this_month: number;
-  school_code: string;
-  district_code: string;
-}
-
-export interface Substitute {
-  id: string;
-  name: string;
-  email: string;
-  employee_id: string;
-  certifications: string[];
-  preferred_schools: string[];
-  availability_status: 'available' | 'busy' | 'offline';
-  today_earnings: number;
-  week_earnings: number;
-  month_earnings: number;
-  ytd_earnings: number;
-}
-
-export interface TimeOffRequest {
-  id: string;
-  teacher_id: string;
-  teacher_name: string;
-  start_date: string;
-  end_date: string;
-  reason: string;
-  notes?: string;
-  status: 'pending' | 'approved' | 'denied';
-  substitute_id?: string;
-  substitute_name?: string;
-  lesson_plan_url?: string;
-  created_at: string;
-}
-
-export interface CoverageLog {
-  id: string;
-  date: string;
-  teacher_id: string;
-  teacher_name: string;
-  substitute_id: string;
-  substitute_name: string;
-  class_name: string;
-  periods: string;
-  duration: number; // in hours
-  rate: number;
-  amount: number;
-  status: 'pending' | 'verified' | 'paid';
-  school_code: string;
-}
-
-// ============= ADMIN API FUNCTIONS =============
 export const adminAPI = {
-  // Get dashboard stats
-  async getDashboardStats(schoolCode: string, districtCode: string) {
-    return xanoFetch(`/admin/dashboard-stats?school=${schoolCode}&district=${districtCode}`);
-  },
+  getAvailableTeachers: (schoolCode: string, datetime: string) =>
+    xanoFetch<Teacher[]>(`/teachers/available?school=${encodeURIComponent(schoolCode)}&datetime=${encodeURIComponent(datetime)}`),
 
-  // Get all uncovered classes
-  async getUncoveredClasses(schoolCode: string) {
-    return xanoFetch(`/coverage/uncovered?school=${schoolCode}`);
-  },
+  getDashboardStats: (schoolCode: string, districtCode: string) =>
+    xanoFetch<{
+      uncoveredCount: number;
+      availableTeachers: number;
+      activeSubstitutes: number;
+      coverageRate: number;
+    }>(`/admin/dashboard-stats?school=${encodeURIComponent(schoolCode)}&district=${encodeURIComponent(districtCode)}`),
 
-  // Get available teachers for coverage
-  async getAvailableTeachers(schoolCode: string, datetime: string) {
-    return xanoFetch(`/teachers/available?school=${schoolCode}&datetime=${datetime}`);
-  },
+  getUncoveredClasses: (schoolCode: string) =>
+    xanoFetch<CoverageRequest[]>(`/coverage/uncovered?school=${encodeURIComponent(schoolCode)}`),
 
-  // Create emergency coverage request
-  async createEmergencyCoverage(data: {
-    class_id: string;
-    urgent: boolean;
-    broadcast_to_all: boolean;
-  }) {
-    return xanoFetch('/coverage/emergency', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
+  getDepartmentRotations: (schoolCode: string) =>
+    xanoFetch<Record<string, Teacher[]>>(`/departments/rotations?school=${encodeURIComponent(schoolCode)}`),
 
-  // Assign coverage to teacher
-  async assignCoverage(coverageId: string, teacherId: string) {
-    return xanoFetch(`/coverage/${coverageId}/assign`, {
+  assignTeacherToCoverage: (coverageId: string, teacherId: string) =>
+    xanoFetch<CoverageRequest>(`/coverage/${encodeURIComponent(coverageId)}/assign`, {
       method: 'POST',
       body: JSON.stringify({ teacher_id: teacherId }),
-    });
-  },
+    }),
 
-  // Mark teacher absent
-  async markTeacherAbsent(teacherId: string, date: string) {
-    return xanoFetch('/teachers/mark-absent', {
+  createEmergencyCoverage: (classId: string, urgent: boolean = true, broadcastToAll: boolean = false) =>
+    xanoFetch<CoverageRequest>('/coverage/emergency', {
       method: 'POST',
-      body: JSON.stringify({ teacher_id: teacherId, date }),
-    });
-  },
+      body: JSON.stringify({
+        class_id: classId,
+        urgent,
+        broadcast_to_all: broadcastToAll,
+      }),
+    }),
 
-  // Get department rotations
-  async getDepartmentRotations(schoolCode: string) {
-    return xanoFetch(`/departments/rotations?school=${schoolCode}`);
-  },
-
-  // Get coverage history
-  async getCoverageHistory(schoolCode: string, startDate?: string, endDate?: string) {
+  getCoverageHistory: (schoolCode: string, startDate?: string, endDate?: string) => {
     const params = new URLSearchParams({ school: schoolCode });
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    return xanoFetch(`/coverage/history?${params}`);
+    return xanoFetch<CoverageHistoryEntry[]>(`/coverage/history?${params.toString()}`);
   },
+
+  markTeacherAbsent: (teacherId: string, date: string) =>
+    xanoFetch<{ success: boolean }>(`/teachers/mark-absent`, {
+      method: 'POST',
+      body: JSON.stringify({ teacher_id: teacherId, date }),
+    }),
 };
 
-// ============= TEACHER API FUNCTIONS =============
 export const teacherAPI = {
-  // Get teacher's coverage opportunities
-  async getCoverageOpportunities(teacherId: string) {
-    return xanoFetch(`/teachers/${teacherId}/coverage-opportunities`);
-  },
+  getCoverageOpportunities: (teacherId: string) =>
+    xanoFetch<CoverageRequest[]>(`/teachers/${encodeURIComponent(teacherId)}/coverage-opportunities`),
 
-  // Accept coverage assignment
-  async acceptCoverage(coverageId: string, teacherId: string) {
-    return xanoFetch(`/coverage/${coverageId}/accept`, {
+  acceptCoverage: (coverageId: string, teacherId: string) =>
+    xanoFetch<{ success: boolean }>(`/coverage/${encodeURIComponent(coverageId)}/accept`, {
       method: 'POST',
       body: JSON.stringify({ teacher_id: teacherId }),
-    });
-  },
+    }),
 
-  // Request time off
-  async requestTimeOff(data: {
-    teacher_id: string;
-    start_date: string;
-    end_date: string;
-    reason: string;
-    notes?: string;
-    lesson_plan_url?: string;
-  }) {
-    return xanoFetch('/time-off/request', {
+  getTimeOffRequests: (teacherId: string) =>
+    xanoFetch<TimeOffRequest[]>(`/teachers/${encodeURIComponent(teacherId)}/time-off-requests`),
+
+  requestTimeOff: (request: Omit<TimeOffRequest, 'id' | 'status'>) =>
+    xanoFetch<TimeOffRequest>('/time-off/request', {
       method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
+      body: JSON.stringify(request),
+    }),
 
-  // Get time off requests
-  async getTimeOffRequests(teacherId: string) {
-    return xanoFetch(`/teachers/${teacherId}/time-off-requests`);
-  },
+  getCoverageLog: (teacherId: string) =>
+    xanoFetch<CoverageLog[]>(`/teachers/${encodeURIComponent(teacherId)}/coverage-log`),
 
-  // Get coverage log (earnings)
-  async getCoverageLog(teacherId: string) {
-    return xanoFetch(`/teachers/${teacherId}/coverage-log`);
-  },
-
-  // Get earnings summary
-  async getEarningsSummary(teacherId: string) {
-    return xanoFetch(`/teachers/${teacherId}/earnings-summary`);
-  },
-
-  // Cancel time off request
-  async cancelTimeOffRequest(requestId: string) {
-    return xanoFetch(`/time-off/${requestId}/cancel`, {
-      method: 'DELETE',
-    });
-  },
+  getEarningsSummary: (teacherId: string) =>
+    xanoFetch<{ month: string; totalHours: number; totalAmount: number }>(
+      `/teachers/${encodeURIComponent(teacherId)}/earnings-summary`
+    ),
 };
 
-// ============= SUBSTITUTE API FUNCTIONS =============
 export const substituteAPI = {
-  // Get available jobs
-  async getAvailableJobs(subId: string, filter: 'today' | 'week' | 'all' = 'all') {
-    return xanoFetch(`/substitutes/${subId}/available-jobs?filter=${filter}`);
-  },
+  getAvailableJobs: (subId: string) =>
+    xanoFetch<CoverageRequest[]>(`/substitutes/${encodeURIComponent(subId)}/available-jobs`),
 
-  // Accept substitute job
-  async acceptJob(jobId: string, subId: string) {
-    return xanoFetch(`/jobs/${jobId}/accept`, {
+  acceptJob: (jobId: string, subId: string) =>
+    xanoFetch<{ success: boolean }>(`/jobs/${encodeURIComponent(jobId)}/accept`, {
       method: 'POST',
-      body: JSON.stringify({ substitute_id: subId }),
-    });
-  },
+      body: JSON.stringify({ sub_id: subId }),
+    }),
 
-  // Get assignments
-  async getAssignments(subId: string) {
-    return xanoFetch(`/substitutes/${subId}/assignments`);
-  },
+  getAssignments: (subId: string) =>
+    xanoFetch<CoverageRequest[]>(`/substitutes/${encodeURIComponent(subId)}/assignments`),
 
-  // Get earnings data
-  async getEarnings(subId: string) {
-    return xanoFetch(`/substitutes/${subId}/earnings`);
-  },
+  getEarnings: (subId: string) =>
+    xanoFetch<{ month: string; totalJobs: number; totalAmount: number }>(
+      `/substitutes/${encodeURIComponent(subId)}/earnings`
+    ),
 
-  // Update availability
-  async updateAvailability(subId: string, status: 'available' | 'busy' | 'offline') {
-    return xanoFetch(`/substitutes/${subId}/availability`, {
+  updateAvailability: (subId: string, available: boolean) =>
+    xanoFetch<{ success: boolean }>(`/substitutes/${encodeURIComponent(subId)}/availability`, {
       method: 'PUT',
-      body: JSON.stringify({ status }),
-    });
-  },
+      body: JSON.stringify({ available }),
+    }),
 
-  // Get urgent jobs
-  async getUrgentJobs(subId: string) {
-    return xanoFetch(`/substitutes/${subId}/urgent-jobs`);
-  },
+  getUrgentJobs: (subId: string) =>
+    xanoFetch<CoverageRequest[]>(`/substitutes/${encodeURIComponent(subId)}/urgent-jobs`),
 };
 
-// ============= REAL-TIME UPDATES =============
-// WebSocket connection for real-time updates
-class CoverageWebSocket {
-  private ws: WebSocket | null = null;
-  private listeners: Map<string, Set<Function>> = new Map();
+export function setupCoverageWebSocket(onMessage: (data: any) => void) {
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (!wsUrl) return null;
 
-  connect(userId: string, role: string) {
-    const wsUrl = process.env.NEXT_PUBLIC_XANO_WS_URL || 'wss://your-instance.xano.io/ws';
-    this.ws = new WebSocket(`${wsUrl}?user=${userId}&role=${role}`);
+  const ws = new WebSocket(wsUrl);
 
-    this.ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      this.emit(data.type, data.payload);
-    };
-
-    this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    this.ws.onclose = () => {
-      // Attempt to reconnect after 5 seconds
-      setTimeout(() => this.connect(userId, role), 5000);
-    };
-  }
-
-  on(event: string, callback: Function) {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
+  ws.onopen = () => console.log('Coverage WebSocket connected');
+  ws.onmessage = (event) => {
+    try {
+      onMessage(JSON.parse(event.data));
+    } catch (e) {
+      console.error('WebSocket message parse error:', e);
     }
-    this.listeners.get(event)!.add(callback);
-  }
+  };
+  ws.onerror = (error) => console.error('WebSocket error:', error);
+  ws.onclose = () => console.log('Coverage WebSocket disconnected');
 
-  off(event: string, callback: Function) {
-    this.listeners.get(event)?.delete(callback);
-  }
-
-  emit(event: string, data: any) {
-    this.listeners.get(event)?.forEach(callback => callback(data));
-  }
-
-  disconnect() {
-    this.ws?.close();
-  }
+  return ws;
 }
 
-export const coverageSocket = new CoverageWebSocket();
-
-// ============= POLLING FOR UPDATES (Fallback) =============
-export class CoveragePoller {
-  private intervals: Map<string, NodeJS.Timeout> = new Map();
-
-  startPolling(key: string, callback: () => Promise<void>, intervalMs = 10000) {
-    if (this.intervals.has(key)) {
-      this.stopPolling(key);
-    }
-    
-    const interval = setInterval(async () => {
-      try {
-        await callback();
-      } catch (error) {
-        console.error(`Polling error for ${key}:`, error);
-      }
-    }, intervalMs);
-    
-    this.intervals.set(key, interval);
-  }
-
-  stopPolling(key: string) {
-    const interval = this.intervals.get(key);
-    if (interval) {
-      clearInterval(interval);
-      this.intervals.delete(key);
-    }
-  }
-
-  stopAllPolling() {
-    this.intervals.forEach(interval => clearInterval(interval));
-    this.intervals.clear();
-  }
-}
-
-export const coveragePoller = new CoveragePoller();
-
-// ============= SHARED UTILITIES =============
-export const coverageUtils = {
-  // Format time for display
-  formatTime(time: string): string {
-    const date = new Date(`2000-01-01T${time}`);
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true 
-    });
+export const utils = {
+  formatTime: (timeStr: string) => {
+    const date = new Date(`2000-01-01T${timeStr}`);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   },
 
-  // Calculate coverage pay
-  calculatePay(duration: number, rate: number): number {
-    return duration * rate;
-  },
-
-  // Check if coverage is urgent (starts within 1 hour)
-  isUrgent(startTime: string): boolean {
-    const start = new Date(startTime);
-    const now = new Date();
-    const diffMs = start.getTime() - now.getTime();
-    const diffMins = diffMs / (1000 * 60);
-    return diffMins <= 60 && diffMins > 0;
-  },
-
-  // Get countdown timer text
-  getCountdownText(targetTime: string): string {
-    const target = new Date(targetTime);
-    const now = new Date();
-    const diffMs = target.getTime() - now.getTime();
-    
-    if (diffMs <= 0) return 'OVERDUE';
-    
-    const mins = Math.floor(diffMs / (1000 * 60));
-    const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  calculateDuration: (startTime: string, endTime: string) => {
+    const start = new Date(`2000-01-01T${startTime}`);
+    const end = new Date(`2000-01-01T${endTime}`);
+    return (end.getTime() - start.getTime()) / (1000 * 60 * 60);
   },
 };
