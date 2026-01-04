@@ -64,7 +64,7 @@ export interface Teacher {
 
   days_since_last: number;
 
-  // ✅ Needed by AdminCoverageClient (it maps t.rotation_position)
+  // Needed by AdminCoverageClient (it maps t.rotation_position)
   rotation_position?: number | null;
 
   // keep existing field too (some endpoints might use it)
@@ -122,7 +122,7 @@ export interface CoverageLog {
   school_code: string;
 }
 
-// ✅ Fixes your build error: AdminCoverageClient imports CoverageHistoryEntry
+// Fixes build error: AdminCoverageClient imports CoverageHistoryEntry
 export type CoverageHistoryEntry = CoverageLog & {
   // optional extras your UI may want
   type?: string; // e.g., "Emergency" | "Planned"
