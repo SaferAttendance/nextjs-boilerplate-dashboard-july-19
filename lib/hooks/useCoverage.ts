@@ -31,6 +31,13 @@ export function useAdminDashboard(schoolCode: string, districtCode: string) {
   const [departmentRotations, setDepartmentRotations] = useState<Record<string, Teacher[]>>({});
 
   const fetchData = useCallback(async () => {
+    // Guard against empty codes - don't make API calls without valid codes
+    if (!schoolCode || !districtCode) {
+      setLoading(false);
+      setError('Missing school or district code');
+      return;
+    }
+
     try {
       setError(null);
       const [statsData, uncovered, rotations] = await Promise.all([
@@ -76,16 +83,23 @@ export function useAdminDashboard(schoolCode: string, districtCode: string) {
     };
   }, [fetchData]);
 
-  const assignEmergencyCoverage = async (classId: string) => {
+  // FIX: Updated signature to accept urgent and broadcastToAll parameters
+  const assignEmergencyCoverage = async (
+    classId: string,
+    urgent: boolean = true,
+    broadcastToAll: boolean = true
+  ) => {
     try {
       const result = await adminAPI.createEmergencyCoverage({
         class_id: classId,
-        urgent: true,
-        broadcast_to_all: true,
+        urgent,
+        broadcast_to_all: broadcastToAll,
       });
 
       // optimistic local state update
-      setUncoveredClasses((prev) => prev.map((c) => (c.id === classId ? { ...c, status: 'pending' as any } : c)));
+      setUncoveredClasses((prev) =>
+        prev.map((c) => (c.id === classId ? { ...c, status: 'pending' as any } : c))
+      );
 
       return result;
     } catch (e) {
@@ -107,7 +121,7 @@ export function useAdminDashboard(schoolCode: string, districtCode: string) {
 
   return {
     loading,
-    error, // ✅ now exists
+    error,
     stats,
     uncoveredClasses,
     departmentRotations,
@@ -132,6 +146,12 @@ export function useTeacherCoverage(teacherId: string, email: string) {
   });
 
   const fetchData = useCallback(async () => {
+    // Guard against empty teacherId
+    if (!teacherId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [opps, requests, log, earningsData] = await Promise.all([
         teacherAPI.getCoverageOpportunities(teacherId),
@@ -237,6 +257,12 @@ export function useSubstituteJobs(subId: string) {
   const [filter, setFilter] = useState<'today' | 'week' | 'all'>('today');
 
   const fetchData = useCallback(async () => {
+    // Guard against empty subId
+    if (!subId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [jobs, urgent, assigns, earningsData] = await Promise.all([
         substituteAPI.getAvailableJobs(subId, filter),
