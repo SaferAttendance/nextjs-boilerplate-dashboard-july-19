@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { adminAPI, CoverageHistoryEntry, CoverageRequest, Teacher as XanoTeacher } from '@/lib/xano/api';
+import { useAdminDashboard } from '@/lib/hooks/useCoverage';
 
 type Toast = { id: string; message: string; type: 'success' | 'error' };
 
-type Teacher = {
+type TeacherView = {
   id: string;
   name: string;
   daysSinceLast: number;
@@ -14,6 +16,26 @@ type Teacher = {
   hoursThisMonth: number;
   amountThisMonth: number;
 };
+
+function mapTeacher(t: XanoTeacher): TeacherView {
+  return {
+    id: String(t.id),
+    name: t.name,
+    daysSinceLast: Number(t.days_since_last ?? 0),
+    position: t.rotation_position ?? null,
+    status: t.status,
+    department: t.department,
+    hoursThisMonth: Number(t.hours_this_month ?? 0),
+    amountThisMonth: Number(t.amount_this_month ?? 0),
+  };
+}
+
+function fmtDateTime(dateStr?: string, timeStr?: string) {
+  if (!dateStr && !timeStr) return '';
+  if (!dateStr) return timeStr || '';
+  if (!timeStr) return dateStr;
+  return `${dateStr} ${timeStr}`;
+}
 
 export default function AdminCoverageClient({
   fullName,
@@ -25,29 +47,24 @@ export default function AdminCoverageClient({
   schoolCode?: string | null;
 }) {
   const initial = useMemo(() => (fullName || 'Admin').split(' ')[0], [fullName]);
+
+  const safeSchool = schoolCode || '';
+  const safeDistrict = districtCode || '';
+
+  const {
+    uncoveredClasses,
+    departmentRotations,
+    stats,
+    loading,
+    error,
+    refreshData,
+    assignEmergencyCoverage,
+    markTeacherAbsent,
+  } = useAdminDashboard(safeSchool, safeDistrict);
+
   const [emergencyMode, setEmergencyMode] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [uncoveredCount, setUncoveredCount] = useState(3);
-  const [availableCount, setAvailableCount] = useState(12);
   const [raceConditionActive, setRaceConditionActive] = useState(false);
-  
-  // Mock rotation data
-  const [rotationData] = useState<Record<string, Teacher[]>>({
-    Math: [
-      { id: 'AS001', name: 'Anna Smith', daysSinceLast: 21, position: 1, status: 'free', department: 'Math', hoursThisMonth: 4.5, amountThisMonth: 135 },
-      { id: 'BJ001', name: 'Bob Johnson', daysSinceLast: 7, position: 2, status: 'free', department: 'Math', hoursThisMonth: 12.0, amountThisMonth: 360 },
-      { id: 'CD001', name: 'Carol Davis', daysSinceLast: 3, position: null, status: 'absent', department: 'Math', hoursThisMonth: 8.5, amountThisMonth: 255 },
-      { id: 'DW001', name: 'David Wilson', daysSinceLast: 5, position: 3, status: 'covering', department: 'Math', hoursThisMonth: 6.0, amountThisMonth: 180 },
-    ],
-    Science: [
-      { id: 'EM001', name: 'Emily Martinez', daysSinceLast: 14, position: 1, status: 'free', department: 'Science', hoursThisMonth: 3.0, amountThisMonth: 90 },
-      { id: 'FT001', name: 'Frank Thomas', daysSinceLast: 9, position: 2, status: 'free', department: 'Science', hoursThisMonth: 7.5, amountThisMonth: 225 },
-    ],
-    English: [
-      { id: 'GL001', name: 'Grace Lee', daysSinceLast: 30, position: 1, status: 'free', department: 'English', hoursThisMonth: 0, amountThisMonth: 0 },
-      { id: 'HW001', name: 'Henry White', daysSinceLast: 4, position: 2, status: 'covering', department: 'English', hoursThisMonth: 15.0, amountThisMonth: 450 },
-    ],
-  });
 
   // Modal states
   const [showBatchAssignModal, setShowBatchAssignModal] = useState(false);
@@ -56,30 +73,10 @@ export default function AdminCoverageClient({
   const [showCreateOpeningModal, setShowCreateOpeningModal] = useState(false);
   const [showDailyScheduleModal, setShowDailyScheduleModal] = useState(false);
 
-  // Toast helpers
-  function pushToast(message: string, type: 'success' | 'error' = 'success') {
-    const id = Math.random().toString(36).slice(2);
-    setToasts((t) => [...t, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((t) => t.filter((x) => x.id !== id));
-    }, 4000);
-  }
-
-  // Simulate real-time updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (uncoveredCount > 0 && Math.random() > 0.7) {
-        setUncoveredCount((c) => Math.max(0, c - 1));
-        pushToast('Class coverage assigned automatically!', 'success');
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [uncoveredCount]);
-
-  // Countdown timer
+  // Countdown (UI-only for now)
   const [urgentMM, setUrgentMM] = useState(42);
   const [urgentSS, setUrgentSS] = useState(15);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       setUrgentSS((s) => {
@@ -98,96 +95,175 @@ export default function AdminCoverageClient({
     return urgentMM <= 0 && urgentSS <= 0 ? 'OVERDUE' : `${mm}:${ss}`;
   }, [urgentMM, urgentSS]);
 
-  // Emergency functions
+  function pushToast(message: string, type: 'success' | 'error' = 'success') {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((t) => [...t, { id, message, type }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
+  }
+
   function toggleEmergencyMode() {
     setEmergencyMode((prev) => {
       const next = !prev;
       pushToast(
-        next
-          ? 'Emergency mode activated — skip approvals enabled'
-          : 'Emergency mode deactivated',
+        next ? 'Emergency mode activated — broadcast enabled' : 'Emergency mode deactivated',
         'success'
       );
       return next;
     });
   }
 
-  function handleEmergencyAssign(classId: string) {
+  const uncoveredCount = stats?.uncoveredCount ?? uncoveredClasses.length ?? 0;
+  const availableCount = stats?.availableTeachers ?? 0;
+  const activeSubstitutes = stats?.activeSubstitutes ?? 0;
+  const coverageRate = stats?.coverageRate ?? 0;
+
+  const rotationData: Record<string, TeacherView[]> = useMemo(() => {
+    const out: Record<string, TeacherView[]> = {};
+    for (const [dept, teachers] of Object.entries(departmentRotations || {})) {
+      out[dept] = (teachers || []).map(mapTeacher);
+    }
+    return out;
+  }, [departmentRotations]);
+
+  function viewAvailableTeachers() {
+    const available = Object.values(rotationData).flat().filter((t) => t.status === 'free');
+    if (available.length === 0) {
+      pushToast('No available teachers found right now.', 'error');
+      return;
+    }
+    pushToast(`Available teachers: ${available.map((t) => t.name).join(', ')}`, 'success');
+  }
+
+  async function handleEmergencyAssign(classId: string) {
+    if (!safeSchool) {
+      pushToast('Missing school code — cannot load coverage data.', 'error');
+      return;
+    }
     if (raceConditionActive) {
       pushToast('Race condition in progress - please wait', 'error');
       return;
     }
-    
-    pushToast(`Starting emergency assignment for ${classId}...`, 'success');
+
     setRaceConditionActive(true);
-    
-    setTimeout(() => {
-      pushToast('Broadcasting to all available teachers...', 'success');
-      
-      setTimeout(() => {
-        const availableTeachers = Object.values(rotationData).flat().filter(t => t.status === 'free');
-        const winner = availableTeachers[Math.floor(Math.random() * availableTeachers.length)];
-        
-        if (winner) {
-          pushToast(`${winner.name} accepted! Assignment logged.`, 'success');
-          setUncoveredCount((c) => Math.max(0, c - 1));
-        }
-        
-        setRaceConditionActive(false);
-      }, 3000);
-    }, 1000);
+    pushToast(`Creating emergency coverage for ${classId}...`, 'success');
+
+    try {
+      const created = await assignEmergencyCoverage(classId, true, emergencyMode);
+      pushToast(`Emergency coverage created: ${created.class_name || created.class_id}`, 'success');
+      await refreshData();
+    } catch (e: any) {
+      pushToast(e?.message || 'Emergency create failed', 'error');
+    } finally {
+      setRaceConditionActive(false);
+    }
   }
 
-  function handleBatchAssign() {
-    const selectedTeachers = Object.values(rotationData).flat().filter(t => t.status === 'free');
-    
-    if (selectedTeachers.length === 0) {
-      pushToast('No available teachers to assign', 'error');
+  async function handleBatchAssign() {
+    const classes = (uncoveredClasses || []).slice(0, 3);
+    if (classes.length === 0) {
+      pushToast('No uncovered classes to assign.', 'error');
       return;
     }
-    
+    if (raceConditionActive) {
+      pushToast('Race condition in progress - please wait', 'error');
+      return;
+    }
+
     setRaceConditionActive(true);
-    pushToast(`Sending notifications to ${selectedTeachers.length} teachers...`, 'success');
-    
-    setTimeout(() => {
-      const winner = selectedTeachers[Math.floor(Math.random() * selectedTeachers.length)];
-      pushToast(`${winner.name} accepted! Assignment logged. Position: #${winner.position} → #${(winner.position || 0) + 3}`, 'success');
-      setUncoveredCount((c) => Math.max(0, c - 1));
-      setRaceConditionActive(false);
+    pushToast(`Creating emergency openings for ${classes.length} classes...`, 'success');
+
+    try {
+      for (const c of classes) {
+        await assignEmergencyCoverage(c.class_id, true, true);
+      }
+      pushToast('Emergency openings created. Waiting for acceptances...', 'success');
+      await refreshData();
       setShowBatchAssignModal(false);
-    }, 3000);
+    } catch (e: any) {
+      pushToast(e?.message || 'Batch create failed', 'error');
+    } finally {
+      setRaceConditionActive(false);
+    }
   }
 
-  function handleMarkAbsent(teacherId: string) {
-    const teacher = Object.values(rotationData).flat().find(t => t.id === teacherId);
-    if (teacher) {
-      pushToast(`${teacher.name} marked absent. Creating coverage openings...`, 'success');
-      setTimeout(() => {
-        pushToast('Emergency notifications sent for immediate coverage needs', 'success');
-        setShowMarkAbsentModal(false);
-      }, 1500);
+  async function handleMarkAbsent(teacherId: string) {
+    if (raceConditionActive) {
+      pushToast('Race condition in progress - please wait', 'error');
+      return;
+    }
+    setRaceConditionActive(true);
+    try {
+      pushToast('Marking teacher absent...', 'success');
+      await markTeacherAbsent(teacherId);
+      pushToast('Teacher marked absent. Coverage needs refreshed.', 'success');
+      await refreshData();
+      setShowMarkAbsentModal(false);
+    } catch (e: any) {
+      pushToast(e?.message || 'Mark absent failed', 'error');
+    } finally {
+      setRaceConditionActive(false);
     }
   }
 
   return (
     <>
+      {/* top status / config */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-semibold">
+            {initial?.[0]?.toUpperCase() || 'A'}
+          </div>
+          <div>
+            <div className="text-sm text-gray-500">Signed in as</div>
+            <div className="font-medium text-gray-900">{fullName || 'Admin'}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => refreshData()}
+            className="px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 hover:bg-gray-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {(!schoolCode || !districtCode) && (
+        <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+          Missing <b>district_code</b> or <b>school_code</b> cookies. The admin page will load, but Xano calls
+          may fail until those cookies are set.
+        </div>
+      )}
+
+      {loading && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
+          Loading live coverage data…
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
       {/* Main Admin View Content */}
       <AdminView
         uncoveredCount={uncoveredCount}
         availableCount={availableCount}
+        activeSubstitutes={activeSubstitutes}
+        coverageRate={coverageRate}
         urgentTimerText={urgentTimerText}
         emergencyAssign={handleEmergencyAssign}
         emergencyBatchAssign={() => setShowBatchAssignModal(true)}
         markTeacherAbsent={() => setShowMarkAbsentModal(true)}
-        viewAvailableTeachers={() => {
-          const available = Object.values(rotationData).flat().filter(t => t.status === 'free');
-          pushToast(`Available teachers: ${available.map(t => t.name).join(', ')}`, 'success');
-        }}
+        viewAvailableTeachers={viewAvailableTeachers}
         pushToast={pushToast}
-        setAvailableCount={setAvailableCount}
         emergencyMode={emergencyMode}
         toggleEmergencyMode={toggleEmergencyMode}
         rotationData={rotationData}
+        uncoveredClasses={uncoveredClasses}
         showHistoryModal={() => setShowHistoryModal(true)}
         showCreateOpeningModal={() => setShowCreateOpeningModal(true)}
         showDailyScheduleModal={() => setShowDailyScheduleModal(true)}
@@ -212,31 +288,35 @@ export default function AdminCoverageClient({
 
       {showHistoryModal && (
         <CoverageHistoryModal
+          schoolCode={safeSchool}
           onClose={() => setShowHistoryModal(false)}
-          onExport={(format: string) => pushToast(`Exporting history as ${format}...`, 'success')}
+          onExport={(format: string) => pushToast(`Exporting history as ${format}…`, 'success')}
         />
       )}
 
       {showCreateOpeningModal && (
         <CreateOpeningModal
           onClose={() => setShowCreateOpeningModal(false)}
-          onCreate={(type: string) => {
-            pushToast(
-              type === 'emergency' 
-                ? 'Emergency opening created! Notifications sent.' 
-                : 'Opening posted to substitute dashboard',
-              'success'
-            );
-            setShowCreateOpeningModal(false);
+          onCreate={async (type: string, classId: string) => {
+            if (!classId) {
+              pushToast('Please enter a class id (ex: MATH201).', 'error');
+              return;
+            }
+            try {
+              if (type === 'emergency') {
+                await handleEmergencyAssign(classId);
+              } else {
+                pushToast('Standard openings need a Xano endpoint (not wired yet).', 'error');
+              }
+              setShowCreateOpeningModal(false);
+            } catch {
+              /* handled via toast */
+            }
           }}
         />
       )}
 
-      {showDailyScheduleModal && (
-        <DailyScheduleModal
-          onClose={() => setShowDailyScheduleModal(false)}
-        />
-      )}
+      {showDailyScheduleModal && <DailyScheduleModal onClose={() => setShowDailyScheduleModal(false)} />}
 
       {/* Race Condition Notification */}
       {raceConditionActive && (
@@ -244,12 +324,17 @@ export default function AdminCoverageClient({
           <div className="flex items-center space-x-3">
             <div className="animate-spin">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
               </svg>
             </div>
             <div>
-              <div className="font-medium">Race Condition Active</div>
-              <div className="text-sm">Waiting for first teacher to accept...</div>
+              <div className="font-medium">Working…</div>
+              <div className="text-sm">Syncing coverage updates</div>
             </div>
           </div>
         </div>
@@ -293,39 +378,41 @@ export default function AdminCoverageClient({
   );
 }
 
-// Type definitions for AdminView
+/** AdminView props + component */
 type AdminViewProps = {
   uncoveredCount: number;
   availableCount: number;
+  activeSubstitutes: number;
+  coverageRate: number;
   urgentTimerText: string;
   emergencyAssign: (classId: string) => void;
   emergencyBatchAssign: () => void;
   markTeacherAbsent: () => void;
   viewAvailableTeachers: () => void;
   pushToast: (message: string, type?: 'success' | 'error') => void;
-  setAvailableCount: (count: number) => void;
   emergencyMode: boolean;
   toggleEmergencyMode: () => void;
-  rotationData: Record<string, Teacher[]>;
+  rotationData: Record<string, TeacherView[]>;
+  uncoveredClasses: CoverageRequest[];
   showHistoryModal: () => void;
   showCreateOpeningModal: () => void;
   showDailyScheduleModal: () => void;
 };
 
-// Main Admin View Component
 function AdminView({
   uncoveredCount,
   availableCount,
+  activeSubstitutes,
+  coverageRate,
   urgentTimerText,
   emergencyAssign,
   emergencyBatchAssign,
   markTeacherAbsent,
   viewAvailableTeachers,
-  pushToast,
-  setAvailableCount,
   emergencyMode,
   toggleEmergencyMode,
   rotationData,
+  uncoveredClasses,
   showHistoryModal,
   showCreateOpeningModal,
   showDailyScheduleModal,
@@ -342,18 +429,21 @@ function AdminView({
             </div>
             <div className="p-3 bg-red-50 rounded-lg">
               <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
               </svg>
             </div>
           </div>
-          {urgentTimerText !== '42:15' && (
-            <div className="mt-3 flex items-center text-xs text-red-600">
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Next class starts in {urgentTimerText}
-            </div>
-          )}
+          <div className="mt-3 flex items-center text-xs text-red-600">
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Next class starts in {urgentTimerText}
+          </div>
         </div>
 
         <div className="bg-white rounded-xl p-6 border border-gray-200">
@@ -368,10 +458,7 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <button
-            onClick={viewAvailableTeachers}
-            className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium"
-          >
+          <button onClick={viewAvailableTeachers} className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">
             View available list →
           </button>
         </div>
@@ -380,7 +467,7 @@ function AdminView({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Active Substitutes</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1">7</p>
+              <p className="text-3xl font-bold text-blue-600 mt-1">{activeSubstitutes}</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg">
               <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -388,16 +475,14 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <div className="mt-3 text-xs text-gray-600">
-            3 on standby
-          </div>
+          <div className="mt-3 text-xs text-gray-600">Live from dashboard stats</div>
         </div>
 
         <div className="bg-white rounded-xl p-6 border border-gray-200">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Coverage Rate</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">94%</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{coverageRate}%</p>
             </div>
             <div className="p-3 bg-gray-50 rounded-lg">
               <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -405,9 +490,7 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <div className="mt-3 text-xs text-gray-600">
-            ↑ 2% from last week
-          </div>
+          <div className="mt-3 text-xs text-gray-600">Live from dashboard stats</div>
         </div>
       </div>
 
@@ -420,7 +503,7 @@ function AdminView({
             </svg>
             <div>
               <p className="font-medium text-gray-900">Emergency Mode</p>
-              <p className="text-sm text-gray-600">Skip rotation order and broadcast to all available teachers</p>
+              <p className="text-sm text-gray-600">Broadcast to all available staff</p>
             </div>
           </div>
           <button
@@ -438,14 +521,11 @@ function AdminView({
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          onClick={emergencyBatchAssign}
-          className="bg-red-600 text-white rounded-xl p-6 hover:bg-red-700 transition-colors"
-        >
+        <button onClick={emergencyBatchAssign} className="bg-red-600 text-white rounded-xl p-6 hover:bg-red-700 transition-colors">
           <div className="flex items-center justify-between">
             <div className="text-left">
               <p className="font-semibold">Emergency Batch Assign</p>
-              <p className="text-sm opacity-90 mt-1">Assign multiple classes at once</p>
+              <p className="text-sm opacity-90 mt-1">Create emergency openings for top uncovered</p>
             </div>
             <svg className="w-8 h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -453,14 +533,11 @@ function AdminView({
           </div>
         </button>
 
-        <button
-          onClick={markTeacherAbsent}
-          className="bg-orange-600 text-white rounded-xl p-6 hover:bg-orange-700 transition-colors"
-        >
+        <button onClick={markTeacherAbsent} className="bg-orange-600 text-white rounded-xl p-6 hover:bg-orange-700 transition-colors">
           <div className="flex items-center justify-between">
             <div className="text-left">
               <p className="font-semibold">Mark Teacher Absent</p>
-              <p className="text-sm opacity-90 mt-1">Create coverage needs</p>
+              <p className="text-sm opacity-90 mt-1">Creates/refreshes coverage needs</p>
             </div>
             <svg className="w-8 h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
@@ -468,14 +545,11 @@ function AdminView({
           </div>
         </button>
 
-        <button
-          onClick={showCreateOpeningModal}
-          className="bg-blue-600 text-white rounded-xl p-6 hover:bg-blue-700 transition-colors"
-        >
+        <button onClick={showCreateOpeningModal} className="bg-blue-600 text-white rounded-xl p-6 hover:bg-blue-700 transition-colors">
           <div className="flex items-center justify-between">
             <div className="text-left">
               <p className="font-semibold">Create Opening</p>
-              <p className="text-sm opacity-90 mt-1">Post new coverage opportunity</p>
+              <p className="text-sm opacity-90 mt-1">Emergency wired, standard pending</p>
             </div>
             <svg className="w-8 h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -490,16 +564,10 @@ function AdminView({
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Department Coverage Rotations</h2>
             <div className="flex items-center space-x-2">
-              <button 
-                onClick={showHistoryModal}
-                className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
+              <button onClick={showHistoryModal} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
                 View History
               </button>
-              <button 
-                onClick={showDailyScheduleModal}
-                className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-              >
+              <button onClick={showDailyScheduleModal} className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
                 Daily Schedule
               </button>
             </div>
@@ -507,93 +575,86 @@ function AdminView({
         </div>
 
         <div className="divide-y divide-gray-200">
-          {Object.entries(rotationData).map(([dept, teachers]) => (
-            <div key={dept} className="p-6">
-              <h3 className="font-medium text-gray-900 mb-4">{dept} Department</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left text-xs text-gray-500">
-                      <th className="pb-3 font-medium">Position</th>
-                      <th className="pb-3 font-medium">Teacher</th>
-                      <th className="pb-3 font-medium">Days Since Last</th>
-                      <th className="pb-3 font-medium">Status</th>
-                      <th className="pb-3 font-medium">Hours This Month</th>
-                      <th className="pb-3 font-medium">Amount Earned</th>
-                      <th className="pb-3 font-medium">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {teachers.map((teacher) => (
-                      <tr key={teacher.id} className="text-sm">
-                        <td className="py-3">
-                          {teacher.position ? (
-                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-medium text-xs">
-                              {teacher.position}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="py-3 font-medium text-gray-900">{teacher.name}</td>
-                        <td className="py-3 text-gray-600">{teacher.daysSinceLast}d</td>
-                        <td className="py-3">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            teacher.status === 'free' ? 'bg-green-100 text-green-700' :
-                            teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {teacher.status}
-                          </span>
-                        </td>
-                        <td className="py-3 text-gray-600">{teacher.hoursThisMonth}h</td>
-                        <td className="py-3 text-gray-900 font-medium">${teacher.amountThisMonth}</td>
-                        <td className="py-3">
-                          {teacher.status === 'free' && (
-                            <button
-                              onClick={() => emergencyAssign(`${dept}-${teacher.id}`)}
-                              className="text-blue-600 hover:text-blue-700 font-medium text-xs"
-                            >
-                              Assign
-                            </button>
-                          )}
-                        </td>
+          {Object.entries(rotationData).length === 0 ? (
+            <div className="p-6 text-sm text-gray-600">No rotation data yet.</div>
+          ) : (
+            Object.entries(rotationData).map(([dept, teachers]) => (
+              <div key={dept} className="p-6">
+                <h3 className="font-medium text-gray-900 mb-4">{dept} Department</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500">
+                        <th className="pb-3 font-medium">Position</th>
+                        <th className="pb-3 font-medium">Teacher</th>
+                        <th className="pb-3 font-medium">Days Since Last</th>
+                        <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Hours This Month</th>
+                        <th className="pb-3 font-medium">Amount Earned</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {teachers.map((teacher) => (
+                        <tr key={teacher.id} className="text-sm">
+                          <td className="py-3">
+                            {teacher.position ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-medium text-xs">
+                                {teacher.position}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 font-medium text-gray-900">{teacher.name}</td>
+                          <td className="py-3 text-gray-600">{teacher.daysSinceLast}d</td>
+                          <td className="py-3">
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                teacher.status === 'free'
+                                  ? 'bg-green-100 text-green-700'
+                                  : teacher.status === 'covering'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {teacher.status}
+                            </span>
+                          </td>
+                          <td className="py-3 text-gray-600">{teacher.hoursThisMonth}h</td>
+                          <td className="py-3 text-gray-900 font-medium">${teacher.amountThisMonth}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
       {/* Uncovered Classes List */}
-      {uncoveredCount > 0 && (
+      {uncoveredClasses?.length > 0 && (
         <div className="bg-white rounded-xl border border-red-200">
           <div className="p-6 border-b border-red-200 bg-red-50">
             <h2 className="text-lg font-semibold text-red-900">Uncovered Classes Requiring Immediate Attention</h2>
           </div>
           <div className="p-6 space-y-4">
-            {[
-              { id: 'MATH201', name: 'Algebra II', time: '8:30 AM', students: 28, priority: 'urgent' },
-              { id: 'SCI102', name: 'Biology Lab', time: '10:15 AM', students: 24, priority: 'high' },
-              { id: 'ENG303', name: 'Literature', time: '1:00 PM', students: 22, priority: 'medium' },
-            ].slice(0, uncoveredCount).map((cls) => (
+            {uncoveredClasses.slice(0, 10).map((cls) => (
               <div key={cls.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div className="flex items-center space-x-4">
-                  <div className={`w-2 h-8 rounded-full ${
-                    cls.priority === 'urgent' ? 'bg-red-500' :
-                    cls.priority === 'high' ? 'bg-orange-500' :
-                    'bg-yellow-500'
-                  }`} />
+                  <div className={`w-2 h-8 rounded-full ${cls.urgent ? 'bg-red-500' : 'bg-yellow-500'}`} />
                   <div>
-                    <p className="font-medium text-gray-900">{cls.name} ({cls.id})</p>
-                    <p className="text-sm text-gray-600">{cls.time} • {cls.students} students</p>
+                    <p className="font-medium text-gray-900">
+                      {cls.class_name || cls.class_id} ({cls.class_id})
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {fmtDateTime(cls.date, cls.start_time)} → {cls.end_time}
+                    </p>
                   </div>
                 </div>
                 <button
-                  onClick={() => emergencyAssign(cls.id)}
+                  onClick={() => emergencyAssign(cls.class_id)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                 >
                   Emergency Assign
@@ -607,71 +668,53 @@ function AdminView({
   );
 }
 
-// Modal Component Type Definitions
+/** Modals */
+
 type EmergencyBatchAssignModalProps = {
-  teachers: Teacher[];
+  teachers: TeacherView[];
   onClose: () => void;
   onAssign: () => void;
 };
 
-type MarkTeacherAbsentModalProps = {
-  teachers: Teacher[];
-  onClose: () => void;
-  onMarkAbsent: (teacherId: string) => void;
-};
-
-type CoverageHistoryModalProps = {
-  onClose: () => void;
-  onExport: (format: string) => void;
-};
-
-type CreateOpeningModalProps = {
-  onClose: () => void;
-  onCreate: (type: string) => void;
-};
-
-type DailyScheduleModalProps = {
-  onClose: () => void;
-};
-
-// Modal Components
 function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBatchAssignModalProps) {
-  const available = teachers.filter((t: Teacher) => t.status === 'free');
-  
+  const available = teachers.filter((t) => t.status === 'free');
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Emergency Batch Assignment</h2>
-        
+
         <div className="space-y-4 mb-6">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-sm text-yellow-800">
-              This will send notifications to all selected teachers. The first to accept gets the assignment.
+              This will create emergency openings; acceptances happen from teacher/sub flows.
             </p>
           </div>
-          
+
           <div className="space-y-2">
             <p className="font-medium text-gray-700">Available Teachers ({available.length})</p>
             <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-60 overflow-y-auto">
-              {available.map((teacher: Teacher) => (
-                <label key={teacher.id} className="flex items-center p-3 hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" defaultChecked className="mr-3" />
+              {available.map((teacher) => (
+                <div key={teacher.id} className="flex items-center p-3">
                   <div className="flex-1">
                     <p className="font-medium">{teacher.name}</p>
-                    <p className="text-xs text-gray-500">{teacher.department} • Position #{teacher.position}</p>
+                    <p className="text-xs text-gray-500">
+                      {teacher.department} • Position #{teacher.position ?? '—'}
+                    </p>
                   </div>
-                </label>
+                </div>
               ))}
+              {available.length === 0 && <div className="p-3 text-sm text-gray-600">No available teachers.</div>}
             </div>
           </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Cancel
           </button>
           <button onClick={onAssign} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-            Send Batch Assignment
+            Create Emergency Openings
           </button>
         </div>
       </div>
@@ -679,43 +722,51 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBat
   );
 }
 
+type MarkTeacherAbsentModalProps = {
+  teachers: TeacherView[];
+  onClose: () => void;
+  onMarkAbsent: (teacherId: string) => void;
+};
+
 function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacherAbsentModalProps) {
   const [selectedTeacher, setSelectedTeacher] = useState('');
-  
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
         <h2 className="text-xl font-semibold mb-4">Mark Teacher Absent</h2>
-        
+
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Teacher</label>
-            <select 
+            <select
               value={selectedTeacher}
               onChange={(e) => setSelectedTeacher(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-lg"
             >
               <option value="">Choose a teacher...</option>
-              {teachers.filter((t: Teacher) => t.status !== 'absent').map((teacher: Teacher) => (
-                <option key={teacher.id} value={teacher.id}>
-                  {teacher.name} - {teacher.department}
-                </option>
-              ))}
+              {teachers
+                .filter((t) => t.status !== 'absent')
+                .map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name} - {teacher.department}
+                  </option>
+                ))}
             </select>
           </div>
-          
+
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
             <p className="text-sm text-orange-800">
-              This will mark the teacher as absent and create coverage openings for all their classes today.
+              This will mark the teacher as absent and refresh coverage needs.
             </p>
           </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Cancel
           </button>
-          <button 
+          <button
             onClick={() => selectedTeacher && onMarkAbsent(selectedTeacher)}
             disabled={!selectedTeacher}
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -728,59 +779,104 @@ function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacher
   );
 }
 
-function CoverageHistoryModal({ onClose, onExport }: CoverageHistoryModalProps) {
+type CoverageHistoryModalProps = {
+  schoolCode: string;
+  onClose: () => void;
+  onExport: (format: string) => void;
+};
+
+function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistoryModalProps) {
+  const [rows, setRows] = useState<CoverageHistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string>('');
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setErr('');
+        const data = await adminAPI.getCoverageHistory(schoolCode);
+        if (alive) setRows(data || []);
+      } catch (e: any) {
+        if (alive) setErr(e?.message || 'Failed to load history');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [schoolCode]);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Coverage History</h2>
           <div className="flex space-x-2">
-            <button onClick={() => onExport('CSV')} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+            <button
+              onClick={() => onExport('CSV')}
+              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            >
               Export CSV
             </button>
-            <button onClick={() => onExport('PDF')} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+            <button
+              onClick={() => onExport('PDF')}
+              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+            >
               Export PDF
             </button>
           </div>
         </div>
-        
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr className="text-left text-xs text-gray-500">
-                <th className="p-3 font-medium">Date</th>
-                <th className="p-3 font-medium">Teacher</th>
-                <th className="p-3 font-medium">Class Covered</th>
-                <th className="p-3 font-medium">Duration</th>
-                <th className="p-3 font-medium">Type</th>
-                <th className="p-3 font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {[
-                { date: '2024-01-08', teacher: 'Anna Smith', class: 'Math 201', duration: '1.5h', type: 'Emergency', amount: '$45' },
-                { date: '2024-01-08', teacher: 'Bob Johnson', class: 'Science 102', duration: '2h', type: 'Planned', amount: '$60' },
-                { date: '2024-01-07', teacher: 'Carol Davis', class: 'English 303', duration: '1h', type: 'Emergency', amount: '$30' },
-              ].map((entry, i) => (
-                <tr key={i} className="text-sm">
-                  <td className="p-3">{entry.date}</td>
-                  <td className="p-3 font-medium">{entry.teacher}</td>
-                  <td className="p-3">{entry.class}</td>
-                  <td className="p-3">{entry.duration}</td>
-                  <td className="p-3">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      entry.type === 'Emergency' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {entry.type}
-                    </span>
-                  </td>
-                  <td className="p-3 font-medium">{entry.amount}</td>
+
+        {loading && <div className="text-sm text-gray-600">Loading history…</div>}
+        {err && <div className="text-sm text-red-700 mb-3">{err}</div>}
+
+        {!loading && !err && (
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr className="text-left text-xs text-gray-500">
+                  <th className="p-3 font-medium">Date</th>
+                  <th className="p-3 font-medium">Teacher</th>
+                  <th className="p-3 font-medium">Class Covered</th>
+                  <th className="p-3 font-medium">Duration</th>
+                  <th className="p-3 font-medium">Type</th>
+                  <th className="p-3 font-medium">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rows.map((r) => (
+                  <tr key={r.id} className="text-sm">
+                    <td className="p-3">{r.date}</td>
+                    <td className="p-3 font-medium">{r.teacher_name}</td>
+                    <td className="p-3">{r.class_name}</td>
+                    <td className="p-3">{r.duration_hours}h</td>
+                    <td className="p-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          r.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {r.type}
+                      </span>
+                    </td>
+                    <td className="p-3 font-medium">${r.amount}</td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td className="p-3 text-sm text-gray-600" colSpan={6}>
+                      No history records yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Close
@@ -791,18 +887,24 @@ function CoverageHistoryModal({ onClose, onExport }: CoverageHistoryModalProps) 
   );
 }
 
+type CreateOpeningModalProps = {
+  onClose: () => void;
+  onCreate: (type: string, classId: string) => void;
+};
+
 function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
   const [openingType, setOpeningType] = useState('standard');
-  
+  const [classId, setClassId] = useState('');
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
         <h2 className="text-xl font-semibold mb-4">Create Coverage Opening</h2>
-        
+
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Opening Type</label>
-            <select 
+            <select
               value={openingType}
               onChange={(e) => setOpeningType(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-lg"
@@ -812,29 +914,28 @@ function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
               <option value="long-term">Long-term Substitute</option>
             </select>
           </div>
-          
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Class</label>
-            <input type="text" placeholder="e.g., Math 201" className="w-full p-2 border border-gray-300 rounded-lg" />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Date & Time</label>
-            <input type="datetime-local" className="w-full p-2 border border-gray-300 rounded-lg" />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
-            <textarea rows={3} placeholder="Additional details..." className="w-full p-2 border border-gray-300 rounded-lg" />
+            <label className="block text-sm font-medium text-gray-700 mb-2">Class ID</label>
+            <input
+              type="text"
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+              placeholder="e.g., MATH201"
+              className="w-full p-2 border border-gray-300 rounded-lg"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Emergency is wired. Standard/long-term need a dedicated Xano endpoint.
+            </p>
           </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Cancel
           </button>
-          <button 
-            onClick={() => onCreate(openingType)}
+          <button
+            onClick={() => onCreate(openingType, classId.trim())}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Create Opening
@@ -844,6 +945,10 @@ function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
     </div>
   );
 }
+
+type DailyScheduleModalProps = {
+  onClose: () => void;
+};
 
 function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
   return (
@@ -857,16 +962,19 @@ function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
             </svg>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-5 gap-4">
           {['8:00 AM', '10:00 AM', '12:00 PM', '2:00 PM', '4:00 PM'].map((time) => (
             <div key={time} className="text-center">
               <p className="text-sm font-medium text-gray-700 mb-2">{time}</p>
               <div className="space-y-2">
                 {[1, 2].map((i) => (
-                  <div key={i} className={`p-3 rounded-lg text-xs ${
-                    Math.random() > 0.5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg text-xs ${
+                      Math.random() > 0.5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}
+                  >
                     {Math.random() > 0.5 ? 'Covered' : 'Open'}
                   </div>
                 ))}
@@ -874,7 +982,7 @@ function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
             </div>
           ))}
         </div>
-        
+
         <div className="mt-6 flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Close
