@@ -1,3 +1,5 @@
+//app/dashboard/coverage/admin/AdminCoverageClient.tsx
+
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
