@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebaseClient';
 
@@ -10,7 +10,7 @@ import { auth } from '@/lib/firebaseClient';
 type UserVerificationResponse = {
   email: string | null;
   full_name: string | null;
-  role: 'admin' | 'teacher' | 'parent' | 'substitute' | 'sub' | null; // 👈 accept "sub"
+  role: 'admin' | 'teacher' | 'parent' | 'substitute' | 'sub' | null; // accept "sub"
   district_code: string | null;
   school_code: string | null;
   sub_assigned: string | null;
@@ -32,10 +32,22 @@ async function verifyUserViaApi(email: string): Promise<UserVerificationResponse
 
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
   try {
-    document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; samesite=lax`;
+    const secure =
+      typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; secure' : '';
+    document.cookie = `${name}=${encodeURIComponent(
+      value
+    )}; path=/; max-age=${maxAgeSeconds}; samesite=lax${secure}`;
   } catch {
     /* non-fatal */
   }
+}
+
+/** Only allow same-origin relative paths for ?next= */
+function safeNextPath(next: string | null): string | null {
+  if (!next) return null;
+  if (!next.startsWith('/')) return null;
+  if (next.startsWith('//')) return null;
+  return next;
 }
 
 export default function LoginPage() {
@@ -45,113 +57,145 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (error) setError('');
-  }, [error]);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { name, value } = e.target;
+      setFormData((prev) => ({ ...prev, [name]: value }));
+      if (error) setError('');
+    },
+    [error]
+  );
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsLoading(true);
+      setError('');
 
-    const email = formData.email.trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setIsLoading(false);
-      setError('Please enter a valid email address.');
-      return;
-    }
+      const email = formData.email.trim().toLowerCase();
+      if (!/^\S+@\S+\.\S+$/.test(email)) {
+        setIsLoading(false);
+        setError('Please enter a valid email address.');
+        return;
+      }
 
-    try {
-      // 0) Verify user & get complete profile information
-      let userProfile: UserVerificationResponse;
       try {
-        userProfile = await verifyUserViaApi(email);
-      } catch (e: any) {
-        throw new Error(e?.message || 'Unable to verify your account right now. Please try again.');
+        // 0) Verify user & get complete profile information
+        let userProfile: UserVerificationResponse;
+        try {
+          userProfile = await verifyUserViaApi(email);
+        } catch (e: any) {
+          throw new Error(e?.message || 'Unable to verify your account right now. Please try again.');
+        }
+
+        if (!userProfile.email || !userProfile.role) {
+          throw new Error('This account is not authorized for system access.');
+        }
+
+        // accept 'sub' and 'substitute'
+        const validRoles = ['admin', 'teacher', 'parent', 'substitute', 'sub'] as const;
+        if (!validRoles.includes(userProfile.role as any)) {
+          throw new Error('Invalid user role. Please contact your administrator.');
+        }
+
+        // 1) Firebase sign in (after confirming valid user)
+        const userCredential = await signInWithEmailAndPassword(auth, email, formData.password);
+
+        // 2) Create httpOnly session cookie on server
+        // IMPORTANT: force refresh token so we don't start with a near-expired cached token
+        const idToken = await userCredential.user.getIdToken(true);
+
+        const sessionRes = await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ idToken, rememberMe }),
+        });
+        if (!sessionRes.ok) throw new Error('Failed to create a secure session.');
+
+        // 3) Hydrate server-managed cookies (optional)
+        try {
+          await fetch('/api/session', { method: 'GET', cache: 'no-store', credentials: 'include' });
+          await new Promise((r) => setTimeout(r, 75));
+        } catch (e) {
+          console.warn('Session hydrate failed (continuing):', e);
+        }
+
+        // 4) Store profile in sessionStorage AND set readable cookies for SSR dashboard
+        try {
+          const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24; // 30d vs 1d
+          const fullName = userProfile.full_name ?? '';
+          const district = userProfile.district_code ?? '';
+          const school = userProfile.school_code ?? '';
+          const subAssigned = userProfile.sub_assigned ?? '';
+          const phoneId = userProfile.Phone_ID ?? '';
+          const role = (userProfile.role || '') as
+            | 'admin'
+            | 'teacher'
+            | 'parent'
+            | 'substitute'
+            | 'sub';
+
+          // client snapshot
+          sessionStorage.setItem(
+            'sa_profile',
+            JSON.stringify({
+              email: userProfile.email,
+              fullName,
+              role,
+              districtCode: district,
+              schoolCode: school,
+              subAssigned,
+              phoneId,
+            })
+          );
+
+          // cookies read by server components (dashboard)
+          setCookie('role', role, maxAge); // may be 'sub' or 'substitute' — dashboard normalizes
+          setCookie('full_name', fullName, maxAge);
+          setCookie('fullname', fullName, maxAge);
+          setCookie('email', userProfile.email ?? email, maxAge);
+          setCookie('district_code', district, maxAge);
+          setCookie('school_code', school, maxAge);
+          setCookie('sub_assigned', String(subAssigned), maxAge);
+          setCookie('phone_id', phoneId, maxAge);
+        } catch {
+          /* non-fatal */
+        }
+
+        // 5) Go to dashboard (force the correct preview immediately)
+        const r = (userProfile.role || '').toLowerCase();
+        const view = r === 'substitute' || r === 'sub' ? 'sub' : r; // ensure sub lands on ?view=sub
+
+        // Honor next redirect if present (set by middleware)
+        const nextParam = safeNextPath(searchParams.get('next'));
+        if (nextParam) {
+          if (nextParam.startsWith('/dashboard')) {
+            const url = new URL(nextParam, window.location.origin);
+            if (!url.searchParams.get('view')) url.searchParams.set('view', view);
+            router.replace(url.pathname + url.search);
+          } else {
+            router.replace(nextParam);
+          }
+        } else {
+          router.replace(`/dashboard?view=${encodeURIComponent(view)}`);
+        }
+      } catch (err: any) {
+        console.error('Login error:', err);
+        if (err?.code === 'auth/user-not-found') setError('No account found with this email.');
+        else if (err?.code === 'auth/wrong-password') setError('Incorrect password.');
+        else if (err?.code === 'auth/invalid-email') setError('Invalid email address.');
+        else if (err?.code === 'auth/too-many-requests')
+          setError('Too many attempts. Please try again later.');
+        else setError(err?.message || 'Login failed. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
-
-      if (!userProfile.email || !userProfile.role) {
-        throw new Error('This account is not authorized for system access.');
-      }
-
-      // ✅ accept 'sub' and 'substitute'
-      const validRoles = ['admin', 'teacher', 'parent', 'substitute', 'sub'] as const;
-      if (!validRoles.includes(userProfile.role as any)) {
-        throw new Error('Invalid user role. Please contact your administrator.');
-      }
-
-      // 1) Firebase sign in (after confirming valid user)
-      const userCredential = await signInWithEmailAndPassword(auth, email, formData.password);
-
-      // 2) Create httpOnly session cookie on server
-      const idToken = await userCredential.user.getIdToken();
-      const sessionRes = await fetch('/api/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken, rememberMe }),
-      });
-      if (!sessionRes.ok) throw new Error('Failed to create a secure session.');
-
-      // 3) Hydrate server-managed cookies (optional)
-      try {
-        await fetch('/api/session', { method: 'GET', cache: 'no-store' });
-        await new Promise((r) => setTimeout(r, 50));
-      } catch (e) {
-        console.warn('Session hydrate failed (continuing):', e);
-      }
-
-      // 4) Store profile in sessionStorage AND set readable cookies for SSR dashboard
-      try {
-        const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24; // 30d vs 1d
-        const fullName = userProfile.full_name ?? '';
-        const district = userProfile.district_code ?? '';
-        const school = userProfile.school_code ?? '';
-        const subAssigned = userProfile.sub_assigned ?? '';
-        const phoneId = userProfile.Phone_ID ?? '';
-        const role = (userProfile.role || '') as 'admin' | 'teacher' | 'parent' | 'substitute' | 'sub';
-
-        // client snapshot
-        sessionStorage.setItem('sa_profile', JSON.stringify({
-          email: userProfile.email,
-          fullName,
-          role,
-          districtCode: district,
-          schoolCode: school,
-          subAssigned,
-          phoneId,
-        }));
-
-        // cookies read by server components (dashboard)
-        setCookie('role', role, maxAge); // may be 'sub' or 'substitute' — dashboard normalizes
-        setCookie('full_name', fullName, maxAge);
-        setCookie('fullname', fullName, maxAge);
-        setCookie('email', userProfile.email ?? email, maxAge);
-        setCookie('district_code', district, maxAge);
-        setCookie('school_code', school, maxAge);
-        setCookie('sub_assigned', String(subAssigned), maxAge);
-        setCookie('phone_id', phoneId, maxAge);
-      } catch {
-        /* non-fatal */
-      }
-
-      // 5) Go to dashboard (force the correct preview immediately)
-      const r = (userProfile.role || '').toLowerCase();
-      const view = r === 'substitute' || r === 'sub' ? 'sub' : r; // 👈 ensure sub lands on ?view=sub
-      router.replace(`/dashboard?view=${encodeURIComponent(view)}`);
-    } catch (err: any) {
-      console.error('Login error:', err);
-      if (err?.code === 'auth/user-not-found') setError('No account found with this email.');
-      else if (err?.code === 'auth/wrong-password') setError('Incorrect password.');
-      else if (err?.code === 'auth/invalid-email') setError('Invalid email address.');
-      else if (err?.code === 'auth/too-many-requests') setError('Too many attempts. Please try again later.');
-      else setError(err?.message || 'Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [formData.email, formData.password, rememberMe, router]);
+    },
+    [formData.email, formData.password, rememberMe, router, searchParams]
+  );
 
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-50">
@@ -165,12 +209,18 @@ export default function LoginPage() {
         <div className="relative z-10 w-full max-w-xl px-16 text-white">
           <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-3xl backdrop-blur-xl bg-white/10 ring-1 ring-white/30 shadow-xl">
             <svg className="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <h2 className="text-4xl font-bold tracking-tight drop-shadow-sm">Safer Attendance</h2>
           <p className="mt-3 text-white/90 leading-relaxed">
-            Ensuring safety one class at a time while promoting attendance through innovative technology.
+            Ensuring safety one class at a time while promoting attendance through innovative
+            technology.
           </p>
           <div className="mt-8 flex items-center gap-6 text-white/80">
             <div className="flex items-center gap-2">
@@ -192,7 +242,12 @@ export default function LoginPage() {
           <div className="lg:hidden text-center mb-8">
             <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-brand-light to-brand-blue text-white shadow-lg">
               <svg className="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-gray-900">Safer Attendance</h2>
@@ -205,9 +260,17 @@ export default function LoginPage() {
             </header>
 
             {error && (
-              <div role="alert" aria-live="polite" className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
+              <div
+                role="alert"
+                aria-live="polite"
+                className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4"
+              >
                 <div className="flex items-center text-red-700">
-                  <svg className="mr-2 h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <svg
+                    className="mr-2 h-5 w-5 text-red-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
                     <path
                       fillRule="evenodd"
                       d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -239,7 +302,11 @@ export default function LoginPage() {
                     className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
                     aria-invalid={!!error}
                   />
-                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                  <svg
+                    className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
                     <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
                     <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
                   </svg>
@@ -265,8 +332,16 @@ export default function LoginPage() {
                     className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 pl-11 pr-12 text-gray-900 placeholder-gray-500 shadow-sm transition focus:border-brand-blue focus:outline-none focus:ring-2 focus:ring-brand-blue/20 disabled:opacity-60"
                     aria-invalid={!!error}
                   />
-                  <svg className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  <svg
+                    className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-gray-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
 
                   <button
@@ -277,15 +352,23 @@ export default function LoginPage() {
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? (
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path
-                        fillRule="evenodd"
-                        d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
-                        clipRule="evenodd" /><path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" /></svg>
+                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fillRule="evenodd"
+                          d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z"
+                          clipRule="evenodd"
+                        />
+                        <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+                      </svg>
                     ) : (
-                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path
-                        fillRule="evenodd"
-                        d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                        clipRule="evenodd" /></svg>
+                      <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                        <path
+                          fillRule="evenodd"
+                          d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
                     )}
                   </button>
                 </div>
