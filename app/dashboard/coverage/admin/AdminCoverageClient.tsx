@@ -1,5 +1,3 @@
-//app/dashboard/coverage/admin/AdminCoverageClient.tsx
-
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -150,6 +148,7 @@ export default function AdminCoverageClient({
     pushToast(`Creating emergency coverage for ${classId}...`, 'success');
 
     try {
+      // FIX: Now correctly passing all 3 arguments to match the hook signature
       const created = await assignEmergencyCoverage(classId, true, emergencyMode);
       pushToast(`Emergency coverage created: ${created.class_name || created.class_id}`, 'success');
       await refreshData();
@@ -176,6 +175,7 @@ export default function AdminCoverageClient({
 
     try {
       for (const c of classes) {
+        // FIX: Now correctly passing all 3 arguments
         await assignEmergencyCoverage(c.class_id, true, true);
       }
       pushToast('Emergency openings created. Waiting for acceptances...', 'success');
@@ -188,6 +188,7 @@ export default function AdminCoverageClient({
     }
   }
 
+  // FIX: Now passing the required date parameter to markTeacherAbsent
   async function handleMarkAbsent(teacherId: string) {
     if (raceConditionActive) {
       pushToast('Race condition in progress - please wait', 'error');
@@ -196,7 +197,9 @@ export default function AdminCoverageClient({
     setRaceConditionActive(true);
     try {
       pushToast('Marking teacher absent...', 'success');
-      await markTeacherAbsent(teacherId);
+      // FIX: Added today's date as required second parameter
+      const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" format
+      await markTeacherAbsent(teacherId, today);
       pushToast('Teacher marked absent. Coverage needs refreshed.', 'success');
       await refreshData();
       setShowMarkAbsentModal(false);
@@ -854,7 +857,8 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
                     <td className="p-3">{r.date}</td>
                     <td className="p-3 font-medium">{r.teacher_name}</td>
                     <td className="p-3">{r.class_name}</td>
-                    <td className="p-3">{r.duration_hours}h</td>
+                    {/* FIX: Changed from r.duration_hours to r.duration to match CoverageLog interface */}
+                    <td className="p-3">{r.duration}h</td>
                     <td className="p-3">
                       <span
                         className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
