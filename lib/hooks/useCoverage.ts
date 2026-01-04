@@ -2,74 +2,80 @@
 // Custom hooks for managing coverage system state and data
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  adminAPI, 
-  teacherAPI, 
-  substituteAPI, 
-  coverageSocket, 
+import {
+  adminAPI,
+  teacherAPI,
+  substituteAPI,
+  coverageSocket,
   coveragePoller,
   type CoverageRequest,
   type Teacher,
   type Substitute,
   type TimeOffRequest,
-  type CoverageLog
+  type CoverageLog,
 } from '@/lib/xano/api';
 
 // ============= ADMIN HOOKS =============
 export function useAdminDashboard(schoolCode: string, districtCode: string) {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [stats, setStats] = useState({
     uncoveredCount: 0,
     availableTeachers: 0,
     activeSubstitutes: 0,
     coverageRate: 0,
   });
+
   const [uncoveredClasses, setUncoveredClasses] = useState<CoverageRequest[]>([]);
   const [departmentRotations, setDepartmentRotations] = useState<Record<string, Teacher[]>>({});
-  
-  // Fetch initial data
+
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const [statsData, uncovered, rotations] = await Promise.all([
         adminAPI.getDashboardStats(schoolCode, districtCode),
         adminAPI.getUncoveredClasses(schoolCode),
         adminAPI.getDepartmentRotations(schoolCode),
       ]);
-      
+
       setStats(statsData);
       setUncoveredClasses(uncovered);
       setDepartmentRotations(rotations);
-    } catch (error) {
-      console.error('Error fetching admin dashboard:', error);
+    } catch (e: any) {
+      console.error('Error fetching admin dashboard:', e);
+      setError(e?.message || 'Failed to load admin dashboard');
     } finally {
       setLoading(false);
     }
   }, [schoolCode, districtCode]);
 
-  // Set up real-time updates
   useEffect(() => {
     fetchData();
-    
-    // WebSocket listeners
-    coverageSocket.on('coverage:created', (data: CoverageRequest) => {
-      setUncoveredClasses(prev => [...prev, data]);
-      setStats(prev => ({ ...prev, uncoveredCount: prev.uncoveredCount + 1 }));
-    });
-    
-    coverageSocket.on('coverage:assigned', (data: { id: string; substitute: string }) => {
-      setUncoveredClasses(prev => prev.filter(c => c.id !== data.id));
-      setStats(prev => ({ ...prev, uncoveredCount: Math.max(0, prev.uncoveredCount - 1) }));
-    });
 
-    // Polling fallback
-    coveragePoller.startPolling('admin-dashboard', fetchData, 30000); // Poll every 30 seconds
+    // Define callbacks so we can unsubscribe on cleanup
+    const onCreated = (data: CoverageRequest) => {
+      setUncoveredClasses((prev) => [...prev, data]);
+      setStats((prev) => ({ ...prev, uncoveredCount: prev.uncoveredCount + 1 }));
+    };
+
+    const onAssigned = (data: { id: string; substitute: string }) => {
+      setUncoveredClasses((prev) => prev.filter((c) => c.id !== data.id));
+      setStats((prev) => ({ ...prev, uncoveredCount: Math.max(0, prev.uncoveredCount - 1) }));
+    };
+
+    coverageSocket.on('coverage:created', onCreated);
+    coverageSocket.on('coverage:assigned', onAssigned);
+
+    coveragePoller.startPolling('admin-dashboard', fetchData, 30000);
 
     return () => {
+      coverageSocket.off('coverage:created', onCreated);
+      coverageSocket.off('coverage:assigned', onAssigned);
       coveragePoller.stopPolling('admin-dashboard');
     };
   }, [fetchData]);
 
-  // Action methods
   const assignEmergencyCoverage = async (classId: string) => {
     try {
       const result = await adminAPI.createEmergencyCoverage({
@@ -77,35 +83,31 @@ export function useAdminDashboard(schoolCode: string, districtCode: string) {
         urgent: true,
         broadcast_to_all: true,
       });
-      
-      // Update local state optimistically
-      setUncoveredClasses(prev => 
-        prev.map(c => c.id === classId ? { ...c, status: 'pending' } : c)
-      );
-      
+
+      // optimistic local state update
+      setUncoveredClasses((prev) => prev.map((c) => (c.id === classId ? { ...c, status: 'pending' as any } : c)));
+
       return result;
-    } catch (error) {
-      console.error('Error creating emergency coverage:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error creating emergency coverage:', e);
+      throw e;
     }
   };
 
   const markTeacherAbsent = async (teacherId: string, date: string) => {
     try {
       const result = await adminAPI.markTeacherAbsent(teacherId, date);
-      
-      // Refresh data to show new coverage needs
       await fetchData();
-      
       return result;
-    } catch (error) {
-      console.error('Error marking teacher absent:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error marking teacher absent:', e);
+      throw e;
     }
   };
 
   return {
     loading,
+    error, // ✅ now exists
     stats,
     uncoveredClasses,
     departmentRotations,
@@ -137,13 +139,13 @@ export function useTeacherCoverage(teacherId: string, email: string) {
         teacherAPI.getCoverageLog(teacherId),
         teacherAPI.getEarningsSummary(teacherId),
       ]);
-      
+
       setOpportunities(opps);
       setTimeOffRequests(requests);
       setCoverageLog(log);
       setEarnings(earningsData);
-    } catch (error) {
-      console.error('Error fetching teacher data:', error);
+    } catch (e) {
+      console.error('Error fetching teacher data:', e);
     } finally {
       setLoading(false);
     }
@@ -151,18 +153,16 @@ export function useTeacherCoverage(teacherId: string, email: string) {
 
   useEffect(() => {
     fetchData();
-    
-    // WebSocket for urgent coverage notifications
-    coverageSocket.on('urgent:coverage', (data: CoverageRequest) => {
-      if (data.urgent) {
-        setOpportunities(prev => [data, ...prev]);
-      }
-    });
 
-    // Poll for updates every minute
+    const onUrgentCoverage = (data: CoverageRequest) => {
+      if (data.urgent) setOpportunities((prev) => [data, ...prev]);
+    };
+
+    coverageSocket.on('urgent:coverage', onUrgentCoverage);
     coveragePoller.startPolling('teacher-coverage', fetchData, 60000);
 
     return () => {
+      coverageSocket.off('urgent:coverage', onUrgentCoverage);
       coveragePoller.stopPolling('teacher-coverage');
     };
   }, [fetchData]);
@@ -170,23 +170,21 @@ export function useTeacherCoverage(teacherId: string, email: string) {
   const acceptCoverage = async (coverageId: string) => {
     try {
       const result = await teacherAPI.acceptCoverage(coverageId, teacherId);
-      
-      // Remove from opportunities
-      setOpportunities(prev => prev.filter(o => o.id !== coverageId));
-      
-      // Update earnings optimistically
-      const coverage = opportunities.find(o => o.id === coverageId);
+
+      setOpportunities((prev) => prev.filter((o) => o.id !== coverageId));
+
+      const coverage = opportunities.find((o) => o.id === coverageId);
       if (coverage) {
-        setEarnings(prev => ({
+        setEarnings((prev) => ({
           ...prev,
-          pendingApproval: prev.pendingApproval + coverage.pay_amount,
+          pendingApproval: prev.pendingApproval + (coverage.pay_amount || 0),
         }));
       }
-      
+
       return result;
-    } catch (error) {
-      console.error('Error accepting coverage:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error accepting coverage:', e);
+      throw e;
     }
   };
 
@@ -202,14 +200,12 @@ export function useTeacherCoverage(teacherId: string, email: string) {
         teacher_id: teacherId,
         ...data,
       });
-      
-      // Add to local requests
-      setTimeOffRequests(prev => [...prev, result]);
-      
+
+      setTimeOffRequests((prev) => [...prev, result]);
       return result;
-    } catch (error) {
-      console.error('Error requesting time off:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error requesting time off:', e);
+      throw e;
     }
   };
 
@@ -248,13 +244,13 @@ export function useSubstituteJobs(subId: string) {
         substituteAPI.getAssignments(subId),
         substituteAPI.getEarnings(subId),
       ]);
-      
+
       setAvailableJobs(jobs);
       setUrgentJobs(urgent);
       setAssignments(assigns);
       setEarnings(earningsData);
-    } catch (error) {
-      console.error('Error fetching substitute data:', error);
+    } catch (e) {
+      console.error('Error fetching substitute data:', e);
     } finally {
       setLoading(false);
     }
@@ -262,29 +258,29 @@ export function useSubstituteJobs(subId: string) {
 
   useEffect(() => {
     fetchData();
-    
-    // Real-time urgent job notifications
-    coverageSocket.on('urgent:job', (job: CoverageRequest) => {
-      setUrgentJobs(prev => [...prev, job]);
-      
-      // Show notification
+
+    const onUrgentJob = (job: CoverageRequest) => {
+      setUrgentJobs((prev) => [...prev, job]);
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('Urgent Coverage Needed!', {
           body: `${job.class_name} needs coverage immediately. Pay: $${job.pay_amount}`,
         });
       }
-    });
+    };
 
-    // Remove job when someone else accepts it
-    coverageSocket.on('job:taken', (jobId: string) => {
-      setAvailableJobs(prev => prev.filter(j => j.id !== jobId));
-      setUrgentJobs(prev => prev.filter(j => j.id !== jobId));
-    });
+    const onJobTaken = (jobId: string) => {
+      setAvailableJobs((prev) => prev.filter((j) => j.id !== jobId));
+      setUrgentJobs((prev) => prev.filter((j) => j.id !== jobId));
+    };
 
-    // Poll for new jobs every 30 seconds
+    coverageSocket.on('urgent:job', onUrgentJob);
+    coverageSocket.on('job:taken', onJobTaken);
+
     coveragePoller.startPolling('sub-jobs', fetchData, 30000);
 
     return () => {
+      coverageSocket.off('urgent:job', onUrgentJob);
+      coverageSocket.off('job:taken', onJobTaken);
       coveragePoller.stopPolling('sub-jobs');
     };
   }, [fetchData]);
@@ -292,36 +288,29 @@ export function useSubstituteJobs(subId: string) {
   const acceptJob = async (jobId: string) => {
     try {
       const result = await substituteAPI.acceptJob(jobId, subId);
-      
-      // Remove from available lists
-      setAvailableJobs(prev => prev.filter(j => j.id !== jobId));
-      setUrgentJobs(prev => prev.filter(j => j.id !== jobId));
-      
-      // Add to assignments
-      setAssignments(prev => [...prev, result]);
-      
-      // Update earnings
-      const job = [...availableJobs, ...urgentJobs].find(j => j.id === jobId);
+
+      setAvailableJobs((prev) => prev.filter((j) => j.id !== jobId));
+      setUrgentJobs((prev) => prev.filter((j) => j.id !== jobId));
+      setAssignments((prev) => [...prev, result]);
+
+      const job = [...availableJobs, ...urgentJobs].find((j) => j.id === jobId);
       if (job) {
-        setEarnings(prev => ({
-          ...prev,
-          today: prev.today + job.pay_amount,
-        }));
+        setEarnings((prev) => ({ ...prev, today: prev.today + (job.pay_amount || 0) }));
       }
-      
+
       return result;
-    } catch (error) {
-      console.error('Error accepting job:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error accepting job:', e);
+      throw e;
     }
   };
 
   const updateAvailability = async (status: 'available' | 'busy' | 'offline') => {
     try {
       await substituteAPI.updateAvailability(subId, status);
-    } catch (error) {
-      console.error('Error updating availability:', error);
-      throw error;
+    } catch (e) {
+      console.error('Error updating availability:', e);
+      throw e;
     }
   };
 
@@ -342,12 +331,10 @@ export function useSubstituteJobs(subId: string) {
 // ============= SHARED NOTIFICATION HOOK =============
 export function useCoverageNotifications(userId: string, role: string) {
   useEffect(() => {
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // Connect WebSocket
     coverageSocket.connect(userId, role);
 
     return () => {
@@ -362,12 +349,12 @@ export function useRaceCondition() {
   const [raceWinner, setRaceWinner] = useState<string | null>(null);
 
   useEffect(() => {
-    coverageSocket.on('race:started', (data: { jobId: string }) => {
+    const onRaceStarted = (data: { jobId: string }) => {
       setActiveRace(data.jobId);
       setRaceWinner(null);
-    });
+    };
 
-    coverageSocket.on('race:winner', (data: { jobId: string; winnerId: string; winnerName: string }) => {
+    const onRaceWinner = (data: { jobId: string; winnerId: string; winnerName: string }) => {
       if (data.jobId === activeRace) {
         setRaceWinner(data.winnerName);
         setTimeout(() => {
@@ -375,7 +362,15 @@ export function useRaceCondition() {
           setRaceWinner(null);
         }, 5000);
       }
-    });
+    };
+
+    coverageSocket.on('race:started', onRaceStarted);
+    coverageSocket.on('race:winner', onRaceWinner);
+
+    return () => {
+      coverageSocket.off('race:started', onRaceStarted);
+      coverageSocket.off('race:winner', onRaceWinner);
+    };
   }, [activeRace]);
 
   return { activeRace, raceWinner };
