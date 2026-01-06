@@ -19,7 +19,7 @@ type TeacherView = {
 
 function mapTeacher(t: XanoTeacher): TeacherView {
   return {
-    id: String(t.id),
+    id: t.employee_id || String(t.id),  // ← USE employee_id
     name: t.name,
     daysSinceLast: Number(t.days_since_last ?? 0),
     position: t.rotation_position ?? null,
