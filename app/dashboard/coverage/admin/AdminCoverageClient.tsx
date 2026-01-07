@@ -180,7 +180,7 @@ export default function AdminCoverageClient({
     if (!safeSchool) return;
     setHistoryLoading(true);
     try {
-      const response = await fetch(`https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/assignment-history?school=${safeSchool}`);
+      const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/assignment-history?school=${safeSchool}`);
       const data = await response.json();
       if (data.history) {
         setAssignmentHistory(data.history);
@@ -204,7 +204,7 @@ export default function AdminCoverageClient({
     if (!safeSchool) return;
     setApplicantsLoading(true);
     try {
-      const response = await fetch(`https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/substitutes/applicants?school=${safeSchool}`);
+      const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/substitutes/applicants?school=${safeSchool}`);
       const data = await response.json();
       if (data.applicants) {
         setApplicants(data.applicants);
@@ -268,7 +268,7 @@ export default function AdminCoverageClient({
 
     try {
       // Use the new auto-assign endpoint that picks next person in rotation
-      const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/auto-assign', {
+      const response = await fetch('https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/auto-assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coverage_id: matchingClass.id })
@@ -464,7 +464,7 @@ export default function AdminCoverageClient({
               const startTimestamp = Date.UTC(year, month - 1, day, startH + 5, startM);
               const endTimestamp = Date.UTC(year, month - 1, day, endH + 5, endM);
               
-              const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/create-opening', {
+              const response = await fetch('https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/create-opening', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2748,7 +2748,7 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
     
     setSubmitting(true);
     try {
-      const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/substitutes/applicants/review', {
+      const response = await fetch('https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/substitutes/applicants/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

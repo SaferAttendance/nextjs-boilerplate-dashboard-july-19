@@ -96,7 +96,7 @@ type School = {
   admin_phone: string;
 };
 
-const XANO_BASE = 'https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2';
+const XANO_BASE = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2';
 
 const CALL_OUT_REASONS = [
   { id: 'illness', label: 'Personal Illness', icon: '🤒' },
