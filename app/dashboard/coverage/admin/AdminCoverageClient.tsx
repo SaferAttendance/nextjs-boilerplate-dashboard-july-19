@@ -1078,6 +1078,9 @@ type DailyScheduleModalProps = {
 function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: DailyScheduleModalProps) {
   const today = new Date().toISOString().split('T')[0];
   
+  // Ensure we have an array to work with
+  const classes = Array.isArray(uncoveredClasses) ? uncoveredClasses : [];
+  
   // Define time slots for the schedule
   const timeSlots = [
     { label: '8:00 AM', start: '08:00', end: '10:00' },
@@ -1089,18 +1092,18 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
 
   // Group classes by time slot
   const getClassesForSlot = (slot: { start: string; end: string }) => {
-    return uncoveredClasses.filter((cls) => {
-      if (!cls.start_time) return false;
+    return classes.filter((cls) => {
+      if (!cls.start_time || typeof cls.start_time !== 'string') return false;
       // Extract hour from start_time (handles "HH:MM" or "HH:MM:SS" formats)
-      const classHour = cls.start_time.substring(0, 5);
+      const classHour = String(cls.start_time).substring(0, 5);
       return classHour >= slot.start && classHour < slot.end;
     });
   };
 
   // Get all classes that don't fit neatly into slots (for "Other" section)
-  const unslottedClasses = uncoveredClasses.filter((cls) => {
-    if (!cls.start_time) return true;
-    const classHour = cls.start_time.substring(0, 5);
+  const unslottedClasses = classes.filter((cls) => {
+    if (!cls.start_time || typeof cls.start_time !== 'string') return true;
+    const classHour = String(cls.start_time).substring(0, 5);
     return classHour < '08:00' || classHour >= '18:00';
   });
 
@@ -1127,7 +1130,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
         <div className="flex gap-4 mb-6">
           <div className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg">
             <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-sm font-medium text-red-700">{uncoveredClasses.length} Open</span>
+            <span className="text-sm font-medium text-red-700">{classes.length} Open</span>
           </div>
           <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
@@ -1161,7 +1164,9 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
                         }`}
                       >
                         <p className="text-xs font-semibold truncate">{cls.class_name || cls.class_id}</p>
-                        <p className="text-[10px] opacity-75">{cls.start_time?.substring(0, 5)} - {cls.end_time?.substring(0, 5)}</p>
+                        <p className="text-[10px] opacity-75">
+                          {cls.start_time ? String(cls.start_time).substring(0, 5) : '?'} - {cls.end_time ? String(cls.end_time).substring(0, 5) : '?'}
+                        </p>
                         <p className="text-[10px] mt-1 font-medium">
                           {cls.status === 'covered' ? '✓ Covered' : '⚠ Open'}
                         </p>
@@ -1197,7 +1202,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
         )}
 
         {/* No Data State */}
-        {uncoveredClasses.length === 0 && (
+        {classes.length === 0 && (
           <div className="text-center py-12">
             <svg className="w-12 h-12 text-green-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
