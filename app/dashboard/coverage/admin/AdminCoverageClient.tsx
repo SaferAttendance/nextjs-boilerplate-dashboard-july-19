@@ -332,20 +332,57 @@ export default function AdminCoverageClient({
       {showCreateOpeningModal && (
         <CreateOpeningModal
           onClose={() => setShowCreateOpeningModal(false)}
-          onCreate={async (type: string, classId: string) => {
-            if (!classId) {
-              pushToast('Please enter a class id (ex: MATH201).', 'error');
-              return;
-            }
+          schoolCode={safeSchool}
+          districtCode={safeDistrict}
+          teachers={Object.values(rotationData).flat()}
+          onCreate={async (data: CreateOpeningData) => {
             try {
-              if (type === 'emergency') {
-                await handleEmergencyAssign(classId);
+              // Calculate timestamps client-side
+              const [year, month, day] = data.date.split('-').map(Number);
+              const [startH, startM] = data.startTime.split(':').map(Number);
+              const [endH, endM] = data.endTime.split(':').map(Number);
+              
+              // Create timestamps - add 5 hours for EST to UTC conversion
+              const startTimestamp = Date.UTC(year, month - 1, day, startH + 5, startM);
+              const endTimestamp = Date.UTC(year, month - 1, day, endH + 5, endM);
+              
+              const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/create-opening', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: data.type,
+                  date: data.date,
+                  start_time: data.startTime,
+                  end_time: data.endTime,
+                  start_timestamp: startTimestamp,
+                  end_timestamp: endTimestamp,
+                  district_code: data.district,
+                  school_code: data.school,
+                  department: data.department,
+                  class_name: data.className,
+                  class_id: data.classId,
+                  room: data.room,
+                  grade: data.grade,
+                  teacher_id: data.teacherId,
+                  teacher_name: data.teacherName,
+                  reason: data.reason,
+                  pay_amount: data.payAmount,
+                  urgent: data.urgent,
+                  notes: data.notes
+                })
+              });
+              
+              const result = await response.json();
+              
+              if (result.success) {
+                pushToast(`✓ Coverage opening created for ${data.className}`, 'success');
+                await refreshData();
+                setShowCreateOpeningModal(false);
               } else {
-                pushToast('Standard openings need a Xano endpoint (not wired yet).', 'error');
+                pushToast(result.message || 'Failed to create opening', 'error');
               }
-              setShowCreateOpeningModal(false);
-            } catch {
-              /* handled via toast */
+            } catch (e: any) {
+              pushToast(e?.message || 'Failed to create opening', 'error');
             }
           }}
         />
@@ -1060,56 +1097,391 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
 
 type CreateOpeningModalProps = {
   onClose: () => void;
-  onCreate: (type: string, classId: string) => void;
+  onCreate: (data: CreateOpeningData) => void;
+  schoolCode: string;
+  districtCode: string;
+  teachers: TeacherView[];
 };
 
-function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
+type CreateOpeningData = {
+  type: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  district: string;
+  school: string;
+  department: string;
+  className: string;
+  classId: string;
+  room: string;
+  grade: string;
+  teacherId: string;
+  teacherName: string;
+  reason: string;
+  payAmount: number;
+  urgent: boolean;
+  notes: string;
+};
+
+function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teachers }: CreateOpeningModalProps) {
   const [openingType, setOpeningType] = useState('standard');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startTime, setStartTime] = useState('08:00');
+  const [endTime, setEndTime] = useState('09:00');
+  const [district, setDistrict] = useState(districtCode || '');
+  const [school, setSchool] = useState(schoolCode || '');
+  const [department, setDepartment] = useState('');
+  const [className, setClassName] = useState('');
   const [classId, setClassId] = useState('');
+  const [room, setRoom] = useState('');
+  const [grade, setGrade] = useState('');
+  const [teacherId, setTeacherId] = useState('');
+  const [reason, setReason] = useState('');
+  const [payAmount, setPayAmount] = useState(35);
+  const [urgent, setUrgent] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Auto-generate class ID when relevant fields change
+  useEffect(() => {
+    if (department && school && date) {
+      const deptCode = department.substring(0, 4).toUpperCase();
+      const dateCode = date.replace(/-/g, '');
+      const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      setClassId(`${deptCode}-${school.toUpperCase()}-${dateCode}-${randomNum}`);
+    }
+  }, [department, school, date]);
+
+  // Calculate pay based on duration
+  useEffect(() => {
+    if (startTime && endTime) {
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [endH, endM] = endTime.split(':').map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+      const durationHours = Math.max(0, (endMinutes - startMinutes) / 60);
+      setPayAmount(Math.round(durationHours * 35)); // $35/hour rate
+    }
+  }, [startTime, endTime]);
+
+  const selectedTeacher = teachers.find(t => t.id === teacherId);
+
+  const handleSubmit = async () => {
+    if (!date || !startTime || !endTime || !department || !className) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    const data: CreateOpeningData = {
+      type: openingType,
+      date,
+      startTime,
+      endTime,
+      district,
+      school,
+      department,
+      className,
+      classId,
+      room,
+      grade,
+      teacherId,
+      teacherName: selectedTeacher?.name || '',
+      reason,
+      payAmount,
+      urgent,
+      notes,
+    };
+    
+    await onCreate(data);
+    setIsSubmitting(false);
+  };
+
+  const departments = ['Mathematics', 'English', 'Science', 'History', 'Physical Education', 'Art', 'Music', 'Foreign Language', 'Special Education', 'Other'];
+  const grades = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+  const reasons = ['Sick Leave', 'Personal Day', 'Professional Development', 'Emergency', 'Appointment', 'Family Leave', 'Jury Duty', 'Other'];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-        <h2 className="text-xl font-semibold mb-4">Create Coverage Opening</h2>
+      <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold">Create Coverage Opening</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Opening Type</label>
-            <select
-              value={openingType}
-              onChange={(e) => setOpeningType(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            >
-              <option value="standard">Standard Coverage</option>
-              <option value="emergency">Emergency Coverage</option>
-              <option value="long-term">Long-term Substitute</option>
-            </select>
+        <div className="space-y-6">
+          {/* Opening Type & Urgency */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
+              <select
+                value={openingType}
+                onChange={(e) => setOpeningType(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="standard">Standard Coverage</option>
+                <option value="emergency">Emergency Coverage</option>
+                <option value="long-term">Long-term Substitute</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center space-x-3 p-2.5 border border-gray-300 rounded-lg w-full cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={urgent}
+                  onChange={(e) => setUrgent(e.target.checked)}
+                  className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
+                />
+                <span className="text-sm font-medium text-gray-700">🚨 Mark as Urgent</span>
+              </label>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Class ID</label>
-            <input
-              type="text"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              placeholder="e.g., MATH201"
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Emergency is wired. Standard/long-term need a dedicated Xano endpoint.
-            </p>
+          {/* Date & Time */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Date & Time</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Location</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">District</label>
+                <input
+                  type="text"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  placeholder="e.g., 0001"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
+                <input
+                  type="text"
+                  value={school}
+                  onChange={(e) => setSchool(e.target.value)}
+                  placeholder="e.g., blueberry"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Class Details */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Class Details</h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
+                <select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select department...</option>
+                  {departments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
+                <select
+                  value={grade}
+                  onChange={(e) => setGrade(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select grade...</option>
+                  {grades.map(g => (
+                    <option key={g} value={g}>Grade {g}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class Name *</label>
+                <input
+                  type="text"
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  placeholder="e.g., Algebra I"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
+                <input
+                  type="text"
+                  value={room}
+                  onChange={(e) => setRoom(e.target.value)}
+                  placeholder="e.g., Room 101"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Class ID</label>
+              <input
+                type="text"
+                value={classId}
+                onChange={(e) => setClassId(e.target.value)}
+                placeholder="Auto-generated"
+                className="w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+              />
+              <p className="mt-1 text-xs text-gray-500">Auto-generated based on department, school, and date</p>
+            </div>
+          </div>
+
+          {/* Teacher & Reason */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Coverage Reason</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Teacher Being Covered</label>
+                <select
+                  value={teacherId}
+                  onChange={(e) => setTeacherId(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select teacher...</option>
+                  {teachers.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} - {t.department}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+                <select
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select reason...</option>
+                  {reasons.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Pay & Notes */}
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Compensation & Notes</h3>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Pay Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                  <input
+                    type="number"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(Number(e.target.value))}
+                    className="w-full p-2.5 pl-7 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">Auto-calculated at $35/hour</p>
+              </div>
+              <div className="flex items-end">
+                <div className="w-full p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <span className="font-medium">Duration:</span>{' '}
+                    {(() => {
+                      const [startH, startM] = startTime.split(':').map(Number);
+                      const [endH, endM] = endTime.split(':').map(Number);
+                      const hours = Math.max(0, ((endH * 60 + endM) - (startH * 60 + startM)) / 60);
+                      return `${hours.toFixed(1)} hours`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any additional information for the substitute..."
+                rows={3}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+        {/* Summary */}
+        {className && department && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-900 mb-2">Summary</h4>
+            <p className="text-sm text-gray-700">
+              <span className="font-medium">{className}</span> ({department}) on{' '}
+              <span className="font-medium">{new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>{' '}
+              from <span className="font-medium">{startTime}</span> to <span className="font-medium">{endTime}</span>
+              {room && <> in <span className="font-medium">{room}</span></>}
+              {selectedTeacher && <> (covering for <span className="font-medium">{selectedTeacher.name}</span>)</>}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end space-x-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+          >
             Cancel
           </button>
           <button
-            onClick={() => onCreate(openingType, classId.trim())}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            onClick={handleSubmit}
+            disabled={!department || !className || !date || isSubmitting}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
-            Create Opening
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Creating...</span>
+              </>
+            ) : (
+              <span>Create Opening</span>
+            )}
           </button>
         </div>
       </div>
