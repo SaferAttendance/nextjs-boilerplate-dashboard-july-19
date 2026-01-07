@@ -1080,6 +1080,58 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
   
   // Ensure we have an array to work with
   const classes = Array.isArray(uncoveredClasses) ? uncoveredClasses : [];
+
+  // Helper to convert timestamp or time string to "HH:MM" format
+  const formatTime = (timeValue: string | number | null | undefined): string | null => {
+    if (!timeValue) return null;
+    
+    // If it's a number (Unix timestamp in milliseconds)
+    if (typeof timeValue === 'number') {
+      const date = new Date(timeValue);
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    
+    // If it's a string that looks like a timestamp (all digits, long)
+    if (typeof timeValue === 'string' && /^\d{10,}$/.test(timeValue)) {
+      const date = new Date(parseInt(timeValue, 10));
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+    
+    // If it's already a time string like "09:00" or "09:00:00"
+    if (typeof timeValue === 'string' && timeValue.includes(':')) {
+      return timeValue.substring(0, 5);
+    }
+    
+    return null;
+  };
+
+  // Helper to format time for display (12-hour format)
+  const formatTimeDisplay = (timeValue: string | number | null | undefined): string => {
+    if (!timeValue) return '?';
+    
+    // If it's a number (Unix timestamp in milliseconds)
+    if (typeof timeValue === 'number') {
+      const date = new Date(timeValue);
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+    
+    // If it's a string that looks like a timestamp
+    if (typeof timeValue === 'string' && /^\d{10,}$/.test(timeValue)) {
+      const date = new Date(parseInt(timeValue, 10));
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+    
+    // If it's already a time string
+    if (typeof timeValue === 'string' && timeValue.includes(':')) {
+      const [hours, minutes] = timeValue.split(':');
+      const h = parseInt(hours, 10);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      return `${h12}:${minutes} ${ampm}`;
+    }
+    
+    return '?';
+  };
   
   // Define time slots for the schedule
   const timeSlots = [
@@ -1093,17 +1145,16 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
   // Group classes by time slot
   const getClassesForSlot = (slot: { start: string; end: string }) => {
     return classes.filter((cls) => {
-      if (!cls.start_time || typeof cls.start_time !== 'string') return false;
-      // Extract hour from start_time (handles "HH:MM" or "HH:MM:SS" formats)
-      const classHour = String(cls.start_time).substring(0, 5);
+      const classHour = formatTime(cls.start_time);
+      if (!classHour) return false;
       return classHour >= slot.start && classHour < slot.end;
     });
   };
 
   // Get all classes that don't fit neatly into slots (for "Other" section)
   const unslottedClasses = classes.filter((cls) => {
-    if (!cls.start_time || typeof cls.start_time !== 'string') return true;
-    const classHour = String(cls.start_time).substring(0, 5);
+    const classHour = formatTime(cls.start_time);
+    if (!classHour) return true;
     return classHour < '08:00' || classHour >= '18:00';
   });
 
@@ -1165,7 +1216,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
                       >
                         <p className="text-xs font-semibold truncate">{cls.class_name || cls.class_id}</p>
                         <p className="text-[10px] opacity-75">
-                          {cls.start_time ? String(cls.start_time).substring(0, 5) : '?'} - {cls.end_time ? String(cls.end_time).substring(0, 5) : '?'}
+                          {formatTimeDisplay(cls.start_time)} - {formatTimeDisplay(cls.end_time)}
                         </p>
                         <p className="text-[10px] mt-1 font-medium">
                           {cls.status === 'covered' ? '✓ Covered' : '⚠ Open'}
@@ -1194,7 +1245,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
                       : 'bg-red-100 text-red-800'
                   }`}
                 >
-                  {cls.class_name || cls.class_id} ({cls.start_time || 'No time'})
+                  {cls.class_name || cls.class_id} ({formatTimeDisplay(cls.start_time) || 'No time'})
                 </button>
               ))}
             </div>
@@ -1235,7 +1286,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Time</span>
-                  <span className="font-medium">{selectedClass.start_time} - {selectedClass.end_time}</span>
+                  <span className="font-medium">{formatTimeDisplay(selectedClass.start_time)} - {formatTimeDisplay(selectedClass.end_time)}</span>
                 </div>
                 {selectedClass.substitute_name && (
                   <div className="flex justify-between text-sm">
