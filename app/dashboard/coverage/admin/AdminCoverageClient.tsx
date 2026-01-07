@@ -356,6 +356,11 @@ export default function AdminCoverageClient({
         showCreateOpeningModal={() => setShowCreateOpeningModal(true)}
         showDailyScheduleModal={() => setShowDailyScheduleModal(true)}
         showRotationManagementModal={() => setShowRotationManagementModal(true)}
+        assignmentHistory={assignmentHistory}
+        teacherStats={teacherStats}
+        historyTotals={historyTotals}
+        historyLoading={historyLoading}
+        fetchAssignmentHistory={fetchAssignmentHistory}
       />
 
       {/* Modals */}
@@ -539,6 +544,12 @@ type AdminViewProps = {
   showCreateOpeningModal: () => void;
   showDailyScheduleModal: () => void;
   showRotationManagementModal: () => void;
+  // Assignment history props
+  assignmentHistory: AssignmentHistoryEntry[];
+  teacherStats: TeacherStat[];
+  historyTotals: { total_assignments: number; total_hours: number; total_amount: number };
+  historyLoading: boolean;
+  fetchAssignmentHistory: () => void;
 };
 
 function AdminView({
@@ -559,6 +570,11 @@ function AdminView({
   showCreateOpeningModal,
   showDailyScheduleModal,
   showRotationManagementModal,
+  assignmentHistory,
+  teacherStats,
+  historyTotals,
+  historyLoading,
+  fetchAssignmentHistory,
 }: AdminViewProps) {
   return (
     <div className="space-y-6">
