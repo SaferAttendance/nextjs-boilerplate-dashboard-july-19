@@ -39,12 +39,13 @@ type Assignment = {
   school_name: string;
   class_name: string;
   room: string;
-  start_time: string;
-  end_time: string;
+  start_time: string | number;
+  end_time: string | number;
   pay: number;
   displayStatus: 'upcoming' | 'completed' | 'current';
   teacher_name?: string;
   department?: string;
+  status?: string;
 };
 
 type Earnings = {
@@ -54,24 +55,47 @@ type Earnings = {
   yearToDate: number;
   schoolBreakdown: Record<string, number>;
   totalJobs: number;
+  recentLogs?: { id: number; date: string; school: string; class_name: string; amount: number; status: string }[];
 };
 
 const XANO_BASE = 'https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2';
 
+const CALL_OUT_REASONS = [
+  { id: 'illness', label: 'Personal Illness', icon: '🤒' },
+  { id: 'family_emergency', label: 'Family Emergency', icon: '👨‍👩‍👧' },
+  { id: 'car_trouble', label: 'Car Trouble / Transportation', icon: '🚗' },
+  { id: 'weather', label: 'Weather Conditions', icon: '🌧️' },
+  { id: 'schedule_conflict', label: 'Schedule Conflict', icon: '📅' },
+  { id: 'other', label: 'Other', icon: '📝' },
+];
+
 export default function SubCoverageClient({ subData }: { subData: SubData }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [filter, setFilter] = useState<'today' | 'week' | 'all'>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [subjects, setSubjects] = useState<string[]>([]);
   const [acceptedJobs, setAcceptedJobs] = useState<Set<string>>(new Set());
   
   // Data from API
   const [availableJobs, setAvailableJobs] = useState<Job[]>([]);
   const [urgentJobs, setUrgentJobs] = useState<Job[]>([]);
   const [myAssignments, setMyAssignments] = useState<{ upcoming: Assignment[]; current: Assignment[]; completed: Assignment[] }>({ upcoming: [], current: [], completed: [] });
-  const [earnings, setEarnings] = useState<Earnings>({ today: 0, week: 0, month: 0, yearToDate: 0, schoolBreakdown: {}, totalJobs: 0 });
+  const [earnings, setEarnings] = useState<Earnings>({ today: 0, week: 0, month: 0, yearToDate: 0, schoolBreakdown: {}, totalJobs: 0, recentLogs: [] });
   const [loading, setLoading] = useState(true);
   
-  // Show first urgent job
+  // Modal states
   const [showUrgentJob, setShowUrgentJob] = useState(true);
+  const [showCallOutModal, setShowCallOutModal] = useState(false);
+  const [callOutJob, setCallOutJob] = useState<Assignment | null>(null);
+  const [callOutReason, setCallOutReason] = useState('');
+  const [callOutNotes, setCallOutNotes] = useState('');
+  const [callOutSubmitting, setCallOutSubmitting] = useState(false);
+  
+  // Stat card modals
+  const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [showAvailableModal, setShowAvailableModal] = useState(false);
+  const [showUpcomingModal, setShowUpcomingModal] = useState(false);
+  
   const currentUrgentJob = urgentJobs[0];
 
   // Countdown timer for urgent job
@@ -105,6 +129,19 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     }, 4000);
   }
 
+  // Fetch subjects for filtering
+  const fetchSubjects = useCallback(async () => {
+    try {
+      const response = await fetch(`${XANO_BASE}/coverage/subjects?school=${subData.schoolCode}`);
+      const data = await response.json();
+      if (data.subjects) {
+        setSubjects(data.subjects);
+      }
+    } catch (e) {
+      console.error('Failed to fetch subjects:', e);
+    }
+  }, [subData.schoolCode]);
+
   // Fetch available jobs
   const fetchJobs = useCallback(async () => {
     try {
@@ -134,6 +171,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
           yearToDate: data.yearToDate || 0,
           schoolBreakdown: data.schoolBreakdown || {},
           totalJobs: data.totalJobs || 0,
+          recentLogs: data.recentLogs || [],
         });
       }
     } catch (e) {
@@ -141,17 +179,93 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     }
   }, [subData.employeeId]);
 
-  // Fetch assignments
+  // Fetch assignments with time-based status
   const fetchAssignments = useCallback(async () => {
     try {
       const response = await fetch(`${XANO_BASE}/substitutes/my-assignments?substitute_id=${subData.employeeId}`);
       const data = await response.json();
       if (data) {
-        setMyAssignments({
-          upcoming: data.upcoming || [],
-          current: data.current || [],
-          completed: data.completed || [],
-        });
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        
+        // Re-categorize based on actual time
+        const allAssignments = [...(data.upcoming || []), ...(data.current || []), ...(data.completed || [])];
+        
+        const upcoming: Assignment[] = [];
+        const current: Assignment[] = [];
+        const completed: Assignment[] = [];
+        
+        for (const a of allAssignments) {
+          // Parse end time
+          let endHour = 15, endMinute = 30; // Default 3:30 PM
+          if (typeof a.end_time === 'number') {
+            const endDate = new Date(a.end_time);
+            endHour = endDate.getHours();
+            endMinute = endDate.getMinutes();
+          } else if (typeof a.end_time === 'string') {
+            const match = a.end_time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+            if (match) {
+              endHour = parseInt(match[1]);
+              if (match[3]?.toUpperCase() === 'PM' && endHour !== 12) endHour += 12;
+              if (match[3]?.toUpperCase() === 'AM' && endHour === 12) endHour = 0;
+              endMinute = parseInt(match[2]);
+            }
+          }
+          
+          // Parse start time similarly
+          let startHour = 8, startMinute = 0;
+          if (typeof a.start_time === 'number') {
+            const startDate = new Date(a.start_time);
+            startHour = startDate.getHours();
+            startMinute = startDate.getMinutes();
+          } else if (typeof a.start_time === 'string') {
+            const match = a.start_time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+            if (match) {
+              startHour = parseInt(match[1]);
+              if (match[3]?.toUpperCase() === 'PM' && startHour !== 12) startHour += 12;
+              if (match[3]?.toUpperCase() === 'AM' && startHour === 12) startHour = 0;
+              startMinute = parseInt(match[2]);
+            }
+          }
+          
+          const assignment = { ...a };
+          
+          if (a.date < today) {
+            // Past date = completed
+            assignment.displayStatus = 'completed';
+            completed.push(assignment);
+          } else if (a.date > today) {
+            // Future date = upcoming
+            assignment.displayStatus = 'upcoming';
+            upcoming.push(assignment);
+          } else {
+            // Today - check time
+            const currentTimeMinutes = currentHour * 60 + currentMinute;
+            const startTimeMinutes = startHour * 60 + startMinute;
+            const endTimeMinutes = endHour * 60 + endMinute;
+            
+            if (currentTimeMinutes >= endTimeMinutes) {
+              // Class has ended
+              assignment.displayStatus = 'completed';
+              completed.push(assignment);
+            } else if (currentTimeMinutes >= startTimeMinutes) {
+              // Currently in progress
+              assignment.displayStatus = 'current';
+              current.push(assignment);
+            } else {
+              // Hasn't started yet
+              assignment.displayStatus = 'upcoming';
+              upcoming.push(assignment);
+            }
+          }
+        }
+        
+        // Sort upcoming by date ascending
+        upcoming.sort((a, b) => a.date.localeCompare(b.date));
+        
+        setMyAssignments({ upcoming, current, completed });
       }
     } catch (e) {
       console.error('Failed to fetch assignments:', e);
@@ -162,11 +276,11 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      await Promise.all([fetchJobs(), fetchEarnings(), fetchAssignments()]);
+      await Promise.all([fetchJobs(), fetchEarnings(), fetchAssignments(), fetchSubjects()]);
       setLoading(false);
     }
     loadData();
-  }, [fetchJobs, fetchEarnings, fetchAssignments]);
+  }, [fetchJobs, fetchEarnings, fetchAssignments, fetchSubjects]);
 
   // Accept job handler
   async function handleAcceptJob(jobId: string, isUrgent = false) {
@@ -204,24 +318,113 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     }
   }
 
+  // Call out handler
+  async function handleCallOut() {
+    if (!callOutJob || !callOutReason) return;
+    
+    setCallOutSubmitting(true);
+    try {
+      const response = await fetch(`${XANO_BASE}/substitutes/call-out`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: callOutJob.id,
+          substitute_id: subData.employeeId,
+          reason: CALL_OUT_REASONS.find(r => r.id === callOutReason)?.label || callOutReason,
+          notes: callOutNotes,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        pushToast('Call out recorded. The job is now available for other substitutes.', 'success');
+        setShowCallOutModal(false);
+        setCallOutJob(null);
+        setCallOutReason('');
+        setCallOutNotes('');
+        
+        // Refresh data
+        fetchAssignments();
+        fetchJobs();
+      } else {
+        pushToast(result.message || 'Failed to submit call out', 'error');
+      }
+    } catch (e) {
+      pushToast('Failed to submit call out. Please try again.', 'error');
+    } finally {
+      setCallOutSubmitting(false);
+    }
+  }
+
+  // W-2 PDF Export
   function handleExportW2() {
     pushToast('Generating W-2 ready export...', 'success');
+    
+    // Create PDF content
+    const pdfContent = `
+SUBSTITUTE TEACHER EARNINGS REPORT
+==================================
+Generated: ${new Date().toLocaleDateString()}
+
+PERSONAL INFORMATION
+--------------------
+Name: ${subData.fullName}
+Employee ID: ${subData.employeeId}
+Email: ${subData.email}
+
+EARNINGS SUMMARY
+----------------
+Today:          $${earnings.today.toFixed(2)}
+This Week:      $${earnings.week.toFixed(2)}
+This Month:     $${earnings.month.toFixed(2)}
+Year to Date:   $${earnings.yearToDate.toFixed(2)}
+
+BREAKDOWN BY SCHOOL
+-------------------
+${Object.entries(earnings.schoolBreakdown).map(([school, amount]) => 
+  `${school}: $${amount.toFixed(2)}`
+).join('\n') || 'No breakdown available'}
+
+TOTAL JOBS COMPLETED: ${earnings.totalJobs}
+
+RECENT ASSIGNMENTS
+------------------
+${(earnings.recentLogs || []).slice(0, 10).map(log => 
+  `${log.date} - ${log.class_name} at ${log.school}: $${log.amount?.toFixed(2) || '0.00'} (${log.status})`
+).join('\n') || 'No recent assignments'}
+
+---
+This document is for tax preparation purposes.
+Please consult with a tax professional for official W-2 filing.
+    `.trim();
+
+    // Create and download file
+    const blob = new Blob([pdfContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `W2_Earnings_${subData.employeeId}_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
     setTimeout(() => {
-      pushToast('Earnings export ready for tax filing!', 'success');
-    }, 1500);
+      pushToast('Earnings export downloaded!', 'success');
+    }, 500);
   }
 
   // Format time display
   function formatTime(time: string | number): string {
     if (typeof time === 'number') {
-      // Unix timestamp
       const date = new Date(time);
       return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     }
     return time;
   }
 
-  // Filter jobs based on selected filter
+  // Filter jobs based on selected filters
   const filteredJobs = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -229,19 +432,27 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     return availableJobs.filter(job => {
       if (acceptedJobs.has(job.id)) return false;
       
+      // Time filter
       const jobDate = job.date;
-      
+      let passesTimeFilter = true;
       switch (filter) {
         case 'today':
-          return jobDate === today;
+          passesTimeFilter = jobDate === today;
+          break;
         case 'week':
-          return jobDate <= weekFromNow;
-        case 'all':
-        default:
-          return true;
+          passesTimeFilter = jobDate <= weekFromNow;
+          break;
       }
+      
+      // Subject filter
+      let passesSubjectFilter = true;
+      if (subjectFilter !== 'all') {
+        passesSubjectFilter = job.subject === subjectFilter || job.subject?.toLowerCase() === subjectFilter.toLowerCase();
+      }
+      
+      return passesTimeFilter && passesSubjectFilter;
     });
-  }, [filter, availableJobs, acceptedJobs]);
+  }, [filter, subjectFilter, availableJobs, acceptedJobs]);
 
   if (loading) {
     return (
@@ -306,8 +517,11 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                 : 'No earnings yet'}
             </span>
           </div>
-          <button onClick={handleExportW2} className="text-purple-600 hover:text-purple-700 font-medium">
-            Export W-2 Ready →
+          <button onClick={handleExportW2} className="text-purple-600 hover:text-purple-700 font-medium flex items-center space-x-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span>Export W-2 Ready →</span>
           </button>
         </div>
       </div>
@@ -370,22 +584,38 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
       )}
 
       {/* Job Filters */}
-      <div className="flex items-center justify-between">
-        <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-          {(['today', 'week', 'all'] as const).map((key) => (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                filter === key
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {key === 'today' ? 'Today' : key === 'week' ? 'This Week' : 'All Available'}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Time Filter */}
+          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+            {(['today', 'week', 'all'] as const).map((key) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  filter === key
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {key === 'today' ? 'Today' : key === 'week' ? 'This Week' : 'All Available'}
+              </button>
+            ))}
+          </div>
+          
+          {/* Subject Filter */}
+          <select
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+          >
+            <option value="all">All Subjects</option>
+            {subjects.map(subject => (
+              <option key={subject} value={subject}>{subject}</option>
+            ))}
+          </select>
         </div>
+        
         <button
           onClick={() => { fetchJobs(); pushToast('Jobs refreshed!', 'success'); }}
           className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 flex items-center space-x-1"
@@ -405,6 +635,8 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
           <p className="text-gray-600">
             {filter === 'today' 
               ? 'No coverage opportunities for today. Try checking "This Week" or "All Available".'
+              : subjectFilter !== 'all'
+              ? `No ${subjectFilter} jobs available. Try selecting "All Subjects".`
               : 'Check back later for new coverage opportunities.'}
           </p>
         </div>
@@ -457,26 +689,24 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                 <div className="text-lg font-semibold text-gray-900">${job.pay.toFixed(2)}</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleAcceptJob(job.id)}
-                    disabled={acceptedJobs.has(job.id)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      acceptedJobs.has(job.id)
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
-                  >
-                    {acceptedJobs.has(job.id) ? 'Accepted' : 'Accept Job'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => handleAcceptJob(job.id)}
+                  disabled={acceptedJobs.has(job.id)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    acceptedJobs.has(job.id)
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {acceptedJobs.has(job.id) ? 'Accepted' : 'Accept Job'}
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* My Assignments */}
+      {/* My Assignments with Call Out */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">My Assignments</h2>
@@ -495,10 +725,10 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                     <div>
                       <div className="font-medium text-gray-900">{assignment.class_name}</div>
                       <div className="text-sm text-gray-600">{assignment.school_name} • Room {assignment.room}</div>
-                      <div className="text-xs text-gray-500">{assignment.start_time} - {assignment.end_time}</div>
+                      <div className="text-xs text-gray-500">{formatTime(assignment.start_time)} - {formatTime(assignment.end_time)}</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-gray-900">${assignment.pay.toFixed(2)}</div>
+                      <div className="font-semibold text-gray-900">${assignment.pay?.toFixed(2) || '0.00'}</div>
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         In Progress
                       </span>
@@ -509,7 +739,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
             </div>
           )}
 
-          {/* Upcoming Assignments */}
+          {/* Upcoming Assignments with Call Out */}
           <div className="mb-6">
             <h3 className="font-medium text-gray-900 mb-3">Upcoming ({myAssignments.upcoming.length})</h3>
             {myAssignments.upcoming.length === 0 ? (
@@ -518,16 +748,27 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               <div className="space-y-3">
                 {myAssignments.upcoming.map((assignment) => (
                   <div key={assignment.id} className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div>
+                    <div className="flex-1">
                       <div className="font-medium text-gray-900">{assignment.class_name}</div>
                       <div className="text-sm text-gray-600">{assignment.school_name} • Room {assignment.room}</div>
-                      <div className="text-xs text-gray-500">{assignment.date} • {assignment.start_time} - {assignment.end_time}</div>
+                      <div className="text-xs text-gray-500">{assignment.date} • {formatTime(assignment.start_time)} - {formatTime(assignment.end_time)}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-semibold text-gray-900">${assignment.pay.toFixed(2)}</div>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        Confirmed
-                      </span>
+                    <div className="flex items-center space-x-3">
+                      <div className="text-right">
+                        <div className="font-semibold text-gray-900">${assignment.pay?.toFixed(2) || '0.00'}</div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          Confirmed
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCallOutJob(assignment);
+                          setShowCallOutModal(true);
+                        }}
+                        className="px-3 py-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-red-200 font-medium transition-colors"
+                      >
+                        Call Out
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -546,7 +787,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                       <div className="font-medium text-gray-700">{assignment.class_name}</div>
                       <div className="text-xs text-gray-500">{assignment.date} • {assignment.school_name}</div>
                     </div>
-                    <div className="font-medium text-green-600">${assignment.pay.toFixed(2)}</div>
+                    <div className="font-medium text-green-600">${assignment.pay?.toFixed(2) || '0.00'}</div>
                   </div>
                 ))}
               </div>
@@ -555,15 +796,21 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats - CLICKABLE */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <button
+          onClick={() => setShowCompletedModal(true)}
+          className="text-left bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all"
+        >
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Jobs Completed</h3>
-          <div className="text-3xl font-bold text-gray-900">{earnings.totalJobs}</div>
-          <div className="text-sm text-green-600 mt-1">Keep up the great work!</div>
-        </div>
+          <div className="text-3xl font-bold text-gray-900">{myAssignments.completed.length}</div>
+          <div className="text-sm text-blue-600 mt-1">Click to view details →</div>
+        </button>
         
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <button
+          onClick={() => setShowAvailableModal(true)}
+          className="text-left bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-blue-300 transition-all"
+        >
           <h3 className="text-sm font-medium text-gray-500 mb-2">Available Now</h3>
           <div className="text-3xl font-bold text-blue-600">{availableJobs.length + urgentJobs.length}</div>
           <div className="text-sm text-gray-600 mt-1">
@@ -571,9 +818,13 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
             {urgentJobs.length > 0 && availableJobs.length > 0 && ' • '}
             {availableJobs.length} regular
           </div>
-        </div>
+          <div className="text-sm text-blue-600 mt-1">Click to browse all →</div>
+        </button>
         
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <button
+          onClick={() => setShowUpcomingModal(true)}
+          className="text-left bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-purple-300 transition-all"
+        >
           <h3 className="text-sm font-medium text-gray-500 mb-2">Upcoming Assignments</h3>
           <div className="text-3xl font-bold text-purple-600">{myAssignments.upcoming.length}</div>
           <div className="text-sm text-gray-600 mt-1">
@@ -581,8 +832,273 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               ? `Next: ${myAssignments.upcoming[0]?.date}` 
               : 'None scheduled'}
           </div>
-        </div>
+          <div className="text-sm text-purple-600 mt-1">Click to view schedule →</div>
+        </button>
       </div>
+
+      {/* Call Out Modal */}
+      {showCallOutModal && callOutJob && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="bg-red-50 px-6 py-4 border-b border-red-200">
+              <h2 className="text-lg font-semibold text-gray-900">Call Out from Assignment</h2>
+              <p className="text-sm text-gray-600">{callOutJob.class_name} on {callOutJob.date}</p>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for calling out *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {CALL_OUT_REASONS.map(reason => (
+                    <button
+                      key={reason.id}
+                      onClick={() => setCallOutReason(reason.id)}
+                      className={`p-3 rounded-lg border text-left transition-all ${
+                        callOutReason === reason.id
+                          ? 'border-red-500 bg-red-50 ring-2 ring-red-500'
+                          : 'border-gray-200 hover:border-red-300'
+                      }`}
+                    >
+                      <span className="text-lg mr-2">{reason.icon}</span>
+                      <span className="text-sm font-medium">{reason.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes (Optional)</label>
+                <textarea
+                  value={callOutNotes}
+                  onChange={(e) => setCallOutNotes(e.target.value)}
+                  placeholder="Any additional information..."
+                  rows={2}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                ⚠️ This will release the job back to the available pool. Other substitutes will be notified.
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowCallOutModal(false);
+                  setCallOutJob(null);
+                  setCallOutReason('');
+                  setCallOutNotes('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCallOut}
+                disabled={!callOutReason || callOutSubmitting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
+              >
+                {callOutSubmitting ? 'Submitting...' : 'Confirm Call Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed Jobs Modal */}
+      {showCompletedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Completed Jobs</h2>
+                <p className="text-sm text-gray-600">{myAssignments.completed.length} jobs completed</p>
+              </div>
+              <button onClick={() => setShowCompletedModal(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              {myAssignments.completed.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No completed jobs yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myAssignments.completed.map((job) => (
+                    <div key={job.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium text-gray-900">{job.class_name}</div>
+                          <div className="text-sm text-gray-600">{job.school_name} • Room {job.room}</div>
+                          <div className="text-xs text-gray-500 mt-1">{job.date} • {formatTime(job.start_time)} - {formatTime(job.end_time)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-green-600">${job.pay?.toFixed(2) || '0.00'}</div>
+                          <span className="text-xs text-gray-500">Completed</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Available Jobs Modal */}
+      {showAvailableModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-3xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="bg-blue-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">All Available Jobs</h2>
+                <p className="text-sm text-gray-600">{availableJobs.length + urgentJobs.length} jobs available</p>
+              </div>
+              <button onClick={() => setShowAvailableModal(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Subject Filter in Modal */}
+            <div className="px-6 py-3 border-b border-gray-200 flex flex-wrap gap-2">
+              <span className="text-sm text-gray-600 py-1">Filter by subject:</span>
+              <button
+                onClick={() => setSubjectFilter('all')}
+                className={`px-3 py-1 rounded-full text-xs font-medium ${subjectFilter === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+              >
+                All
+              </button>
+              {subjects.slice(0, 8).map(subject => (
+                <button
+                  key={subject}
+                  onClick={() => setSubjectFilter(subject)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium ${subjectFilter === subject ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                  {subject}
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              {/* Urgent Jobs */}
+              {urgentJobs.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="font-medium text-red-700 mb-3">🚨 Urgent ({urgentJobs.length})</h3>
+                  <div className="space-y-3">
+                    {urgentJobs.map((job) => (
+                      <div key={job.id} className="p-4 bg-red-50 rounded-lg border border-red-200 flex justify-between items-center">
+                        <div>
+                          <div className="font-medium text-gray-900">{job.title}</div>
+                          <div className="text-sm text-gray-600">{job.school_name} • {job.subject} • Grade {job.grade}</div>
+                          <div className="text-xs text-gray-500">{job.date} • {formatTime(job.startTime)} - {formatTime(job.endTime)}</div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="text-lg font-semibold text-gray-900">${job.pay.toFixed(2)}</div>
+                          <button
+                            onClick={() => { handleAcceptJob(job.id, true); setShowAvailableModal(false); }}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                          >
+                            Accept
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Regular Jobs */}
+              <div>
+                <h3 className="font-medium text-gray-700 mb-3">Available Jobs ({filteredJobs.length})</h3>
+                {filteredJobs.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No jobs match your filter.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredJobs.map((job) => (
+                      <div key={job.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center">
+                        <div>
+                          <div className="font-medium text-gray-900">{job.title}</div>
+                          <div className="text-sm text-gray-600">{job.school_name} • {job.subject} • Grade {job.grade}</div>
+                          <div className="text-xs text-gray-500">{job.date} • {formatTime(job.startTime)} - {formatTime(job.endTime)}</div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="text-lg font-semibold text-gray-900">${job.pay.toFixed(2)}</div>
+                          <button
+                            onClick={() => { handleAcceptJob(job.id); setShowAvailableModal(false); }}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                          >
+                            Accept
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Assignments Modal */}
+      {showUpcomingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="bg-purple-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Upcoming Assignments</h2>
+                <p className="text-sm text-gray-600">{myAssignments.upcoming.length} scheduled</p>
+              </div>
+              <button onClick={() => setShowUpcomingModal(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              {myAssignments.upcoming.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-4">📅</div>
+                  <p className="text-gray-500">No upcoming assignments.</p>
+                  <p className="text-sm text-gray-400 mt-1">Accept some jobs to fill your schedule!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {myAssignments.upcoming.map((job) => (
+                    <div key={job.id} className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium text-gray-900">{job.class_name}</div>
+                          <div className="text-sm text-gray-600">{job.school_name} • Room {job.room}</div>
+                          <div className="text-xs text-gray-500 mt-1">{job.date} • {formatTime(job.start_time)} - {formatTime(job.end_time)}</div>
+                        </div>
+                        <div className="text-right flex flex-col items-end space-y-2">
+                          <div className="font-semibold text-gray-900">${job.pay?.toFixed(2) || '0.00'}</div>
+                          <button
+                            onClick={() => {
+                              setCallOutJob(job);
+                              setShowUpcomingModal(false);
+                              setShowCallOutModal(true);
+                            }}
+                            className="text-xs text-red-600 hover:text-red-700"
+                          >
+                            Call Out
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Container */}
       <div className="fixed top-4 right-4 z-50 space-y-2">
