@@ -1,3 +1,4 @@
+//app/dashboard/coverage/sub/page.tsx
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import SubCoverageClient from './SubCoverageClient';
@@ -6,11 +7,11 @@ export const runtime = 'nodejs';
 
 export default async function SubCoveragePage() {
   const jar = await cookies();
-
+  
   // Auth check
   const rawToken = jar.get('token')?.value ?? jar.get('sa_session')?.value;
   if (!rawToken) redirect('/admin/login');
-
+  
   // Verify token
   let email: string | undefined;
   try {
@@ -21,40 +22,32 @@ export default async function SubCoveragePage() {
   } catch {
     redirect('/admin/login');
   }
-
+  
   // Get user profile from cookies
   const profileRole = jar.get('role')?.value;
   const profileFullName = jar.get('full_name')?.value || jar.get('fullname')?.value || 'Substitute Teacher';
-  const profileDistrictCode = jar.get('district_code')?.value;
-  const profileSchoolCode = jar.get('school_code')?.value;
+  const profileDistrictCode = jar.get('district_code')?.value || '0001';
+  const profileSchoolCode = jar.get('school_code')?.value || 'blueberry';
   const profileEmail = jar.get('email')?.value;
+  const employeeId = jar.get('employee_id')?.value || `SUB-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   const subAssigned = jar.get('sub_assigned')?.value;
-
+  
   // Ensure substitute role
   const normalizedRole = (profileRole || '').toLowerCase();
   if (normalizedRole !== 'substitute' && normalizedRole !== 'sub') {
     // Non-substitutes should go to their appropriate view
     redirect('/dashboard/coverage');
   }
-
-  // Mock data - in production, fetch from database
+  
+  // Pass essential data to client component
   const subData = {
     email: profileEmail || email,
     fullName: profileFullName,
-    employeeId: 'S-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
-    todayEarnings: 85.50,
-    weekEarnings: 420.00,
-    monthEarnings: 1680.00,
-    yearToDateEarnings: 12450.00,
-    schoolBreakdown: {
-      'Lincoln High': 280,
-      'Roosevelt Middle': 140,
-    },
-    currentAssignment: subAssigned,
-    certifications: ['Mathematics', 'Science', 'General Education'],
-    preferredSchools: [profileSchoolCode || 'Lincoln High'],
+    employeeId: employeeId,
+    schoolCode: profileSchoolCode,
+    districtCode: profileDistrictCode,
   };
-
+  
   return (
     <main className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -72,7 +65,6 @@ export default async function SubCoveragePage() {
               <p className="text-xs text-gray-500">Substitute View</p>
             </div>
           </div>
-
           <div className="flex items-center gap-4">
             <a 
               href="/dashboard" 
@@ -83,13 +75,13 @@ export default async function SubCoveragePage() {
             <div className="hidden sm:flex items-center space-x-2">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">
-                {profileFullName} | {subData.currentAssignment ? `Assigned: ${subData.currentAssignment}` : 'Available'}
+                {profileFullName} | {subAssigned ? `Assigned: ${subAssigned}` : 'Available'}
               </span>
             </div>
           </div>
         </div>
       </header>
-
+      
       {/* Main Content */}
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <SubCoverageClient subData={subData} />
