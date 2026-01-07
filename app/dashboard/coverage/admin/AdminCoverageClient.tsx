@@ -6,6 +6,31 @@ import { useAdminDashboard } from '@/lib/hooks/useCoverage';
 
 type Toast = { id: string; message: string; type: 'success' | 'error' };
 
+type AssignmentHistoryEntry = {
+  id: number;
+  date: string;
+  raw_date: string;
+  teacher_id: string;
+  teacher_name: string;
+  class_name: string;
+  department: string;
+  duration: number;
+  amount: number;
+  status: string;
+  type: string;
+  room: string;
+  coverage_request_id: number;
+};
+
+type TeacherStat = {
+  teacher_id: string;
+  teacher_name: string;
+  total_assignments: number;
+  total_hours: number;
+  total_amount: number;
+  last_assignment: string | null;
+};
+
 type TeacherView = {
   id: string;
   name: string;
@@ -66,6 +91,12 @@ export default function AdminCoverageClient({
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [raceConditionActive, setRaceConditionActive] = useState(false);
 
+  // Assignment History state
+  const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistoryEntry[]>([]);
+  const [teacherStats, setTeacherStats] = useState<TeacherStat[]>([]);
+  const [historyTotals, setHistoryTotals] = useState({ total_assignments: 0, total_hours: 0, total_amount: 0 });
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   // Modal states
   const [showBatchAssignModal, setShowBatchAssignModal] = useState(false);
   const [showMarkAbsentModal, setShowMarkAbsentModal] = useState(false);
@@ -112,6 +143,29 @@ export default function AdminCoverageClient({
       return next;
     });
   }
+
+  async function fetchAssignmentHistory() {
+    if (!safeSchool) return;
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/assignment-history?school=${safeSchool}`);
+      const data = await response.json();
+      if (data.history) {
+        setAssignmentHistory(data.history);
+        setTeacherStats(data.teacher_stats || []);
+        setHistoryTotals(data.totals || { total_assignments: 0, total_hours: 0, total_amount: 0 });
+      }
+    } catch (e) {
+      console.error('Failed to fetch assignment history:', e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  // Fetch assignment history on mount and when data changes
+  useEffect(() => {
+    fetchAssignmentHistory();
+  }, [safeSchool]);
 
   const uncoveredCount = stats?.uncoveredCount ?? uncoveredClasses.length ?? 0;
   const availableCount = stats?.availableTeachers ?? 0;
@@ -724,6 +778,16 @@ function AdminView({
           )}
         </div>
       </div>
+
+      {/* NEW: Department Rotation Management Section */}
+      <DepartmentRotationSection
+        rotationData={rotationData}
+        assignmentHistory={assignmentHistory}
+        teacherStats={teacherStats}
+        historyTotals={historyTotals}
+        historyLoading={historyLoading}
+        onRefresh={fetchAssignmentHistory}
+      />
 
       {/* Uncovered Classes List */}
       {uncoveredClasses?.length > 0 && (
@@ -1957,6 +2021,336 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
             Close
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Department Rotation Section Component
+type DepartmentRotationSectionProps = {
+  rotationData: Record<string, TeacherView[]>;
+  assignmentHistory: AssignmentHistoryEntry[];
+  teacherStats: TeacherStat[];
+  historyTotals: { total_assignments: number; total_hours: number; total_amount: number };
+  historyLoading: boolean;
+  onRefresh: () => void;
+};
+
+function DepartmentRotationSection({
+  rotationData,
+  assignmentHistory,
+  teacherStats,
+  historyTotals,
+  historyLoading,
+  onRefresh,
+}: DepartmentRotationSectionProps) {
+  const [activeTab, setActiveTab] = useState<'rotation' | 'history' | 'stats'>('rotation');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
+  
+  const departments = Object.keys(rotationData);
+  
+  // Filter history by department if selected
+  const filteredHistory = selectedDepartment === 'all' 
+    ? assignmentHistory 
+    : assignmentHistory.filter(h => h.department === selectedDepartment);
+  
+  // Get rotation data for selected department or all
+  const displayRotation = selectedDepartment === 'all'
+    ? rotationData
+    : { [selectedDepartment]: rotationData[selectedDepartment] || [] };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Department Rotation Management</h2>
+            <p className="text-indigo-100 text-sm mt-1">Fair rotation-based coverage assignments with full audit trail</p>
+          </div>
+          <button
+            onClick={onRefresh}
+            disabled={historyLoading}
+            className="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors flex items-center space-x-2"
+          >
+            <svg className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('rotation')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'rotation'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center space-x-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Rotation Queue</span>
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'history'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center space-x-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Assignment History</span>
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'stats'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span className="flex items-center space-x-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span>Teacher Stats</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Department Filter */}
+      <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center space-x-3">
+          <span className="text-sm font-medium text-gray-700">Department:</span>
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="all">All Departments</option>
+            {departments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
+          
+          {/* Quick Stats */}
+          <div className="ml-auto flex items-center space-x-6 text-sm">
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500">Total Assignments:</span>
+              <span className="font-semibold text-gray-900">{historyTotals.total_assignments}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500">Total Hours:</span>
+              <span className="font-semibold text-gray-900">{historyTotals.total_hours.toFixed(1)}h</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500">Total Amount:</span>
+              <span className="font-semibold text-green-600">${historyTotals.total_amount.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-6">
+        {/* Rotation Queue Tab */}
+        {activeTab === 'rotation' && (
+          <div className="space-y-6">
+            {Object.entries(displayRotation).map(([dept, teachers]) => (
+              <div key={dept} className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-100 px-4 py-3 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-900">{dept}</h3>
+                  <span className="text-sm text-gray-500">{teachers.length} in rotation</span>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {teachers.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-gray-500">
+                      No teachers in rotation for this department
+                    </div>
+                  ) : (
+                    teachers
+                      .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+                      .map((teacher, index) => (
+                        <div
+                          key={teacher.id}
+                          className={`px-4 py-3 flex items-center justify-between ${
+                            index === 0 ? 'bg-green-50 border-l-4 border-green-500' : ''
+                          }`}
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                              index === 0 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {index + 1}
+                            </div>
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="font-medium text-gray-900">{teacher.name}</span>
+                                {index === 0 && (
+                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                    NEXT UP
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {teacher.daysSinceLast > 0 
+                                  ? `${teacher.daysSinceLast} days since last coverage` 
+                                  : 'No recent coverage'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <div className="text-right">
+                              <p className="text-sm font-medium text-gray-900">{teacher.hoursThisMonth}h this month</p>
+                              <p className="text-sm text-gray-500">${teacher.amountThisMonth.toFixed(0)} earned</p>
+                            </div>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              teacher.status === 'free' 
+                                ? 'bg-green-100 text-green-700' 
+                                : teacher.status === 'covering' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {teacher.status === 'free' ? 'Available' : teacher.status === 'covering' ? 'Covering' : 'Absent'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Assignment History Tab */}
+        {activeTab === 'history' && (
+          <div>
+            {historyLoading ? (
+              <div className="py-12 text-center text-gray-500">Loading history...</div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="py-12 text-center text-gray-500">No assignment history found</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredHistory.map((entry) => (
+                      <tr key={entry.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{entry.date}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{entry.teacher_name}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{entry.class_name}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{entry.department}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{entry.duration}h</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-green-600">${entry.amount.toFixed(2)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            entry.status === 'paid' 
+                              ? 'bg-green-100 text-green-700' 
+                              : entry.status === 'verified' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Teacher Stats Tab */}
+        {activeTab === 'stats' && (
+          <div>
+            {teacherStats.length === 0 ? (
+              <div className="py-12 text-center text-gray-500">No teacher statistics available</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {teacherStats
+                  .sort((a, b) => b.total_hours - a.total_hours)
+                  .map((stat, index) => (
+                    <div
+                      key={stat.teacher_id}
+                      className={`p-4 rounded-lg border ${
+                        index === 0 
+                          ? 'border-yellow-300 bg-yellow-50' 
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                            index === 0 
+                              ? 'bg-yellow-400 text-yellow-900' 
+                              : index === 1 
+                              ? 'bg-gray-300 text-gray-700' 
+                              : index === 2 
+                              ? 'bg-orange-300 text-orange-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {index === 0 ? '🏆' : index + 1}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{stat.teacher_name}</p>
+                            <p className="text-xs text-gray-500">ID: {stat.teacher_id}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-lg font-bold text-gray-900">{stat.total_assignments}</p>
+                          <p className="text-xs text-gray-500">Assignments</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-lg font-bold text-gray-900">{stat.total_hours.toFixed(1)}h</p>
+                          <p className="text-xs text-gray-500">Hours</p>
+                        </div>
+                        <div className="bg-green-50 rounded p-2">
+                          <p className="text-lg font-bold text-green-600">${stat.total_amount.toFixed(0)}</p>
+                          <p className="text-xs text-gray-500">Earned</p>
+                        </div>
+                      </div>
+                      {stat.last_assignment && (
+                        <p className="mt-3 text-xs text-gray-500 text-center">
+                          Last assignment: {new Date(stat.last_assignment).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
