@@ -331,7 +331,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
           job_id: callOutJob.id,
           substitute_id: subData.employeeId,
           reason: CALL_OUT_REASONS.find(r => r.id === callOutReason)?.label || callOutReason,
-          notes: callOutNotes,
+          notes: callOutNotes.trim() || 'N/A',
         }),
       });
       
