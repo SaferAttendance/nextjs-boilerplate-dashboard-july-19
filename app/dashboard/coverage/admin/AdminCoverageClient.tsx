@@ -31,6 +31,30 @@ type TeacherStat = {
   last_assignment: string | null;
 };
 
+type SubstituteApplicant = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  district_code: string;
+  school_code: string | null;
+  status: 'pending' | 'approved' | 'denied';
+  certifications: string | null;
+  experience_years: number | null;
+  subjects: string | null;
+  grade_levels: string | null;
+  availability: string | null;
+  notes: string | null;
+  admin_notes: string | null;
+  denial_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
+  applied_at: number | null;
+  applied_date: string;
+};
+
 type TeacherView = {
   id: string;
   name: string;
@@ -104,6 +128,14 @@ export default function AdminCoverageClient({
   const [showCreateOpeningModal, setShowCreateOpeningModal] = useState(false);
   const [showDailyScheduleModal, setShowDailyScheduleModal] = useState(false);
   const [showRotationManagementModal, setShowRotationManagementModal] = useState(false);
+  const [showAvailableTeachersModal, setShowAvailableTeachersModal] = useState(false);
+  const [showAvailableSubstitutesModal, setShowAvailableSubstitutesModal] = useState(false);
+  const [showApplicantsModal, setShowApplicantsModal] = useState(false);
+
+  // Applicants data
+  const [applicants, setApplicants] = useState<SubstituteApplicant[]>([]);
+  const [applicantsCounts, setApplicantsCounts] = useState({ pending: 0, approved: 0, denied: 0, total: 0 });
+  const [applicantsLoading, setApplicantsLoading] = useState(false);
 
   // Countdown (UI-only for now)
   const [urgentMM, setUrgentMM] = useState(42);
@@ -165,6 +197,29 @@ export default function AdminCoverageClient({
   // Fetch assignment history on mount and when data changes
   useEffect(() => {
     fetchAssignmentHistory();
+  }, [safeSchool]);
+
+  // Fetch applicants
+  async function fetchApplicants() {
+    if (!safeSchool) return;
+    setApplicantsLoading(true);
+    try {
+      const response = await fetch(`https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/substitutes/applicants?school=${safeSchool}`);
+      const data = await response.json();
+      if (data.applicants) {
+        setApplicants(data.applicants);
+        setApplicantsCounts(data.counts || { pending: 0, approved: 0, denied: 0, total: 0 });
+      }
+    } catch (e) {
+      console.error('Failed to fetch applicants:', e);
+    } finally {
+      setApplicantsLoading(false);
+    }
+  }
+
+  // Fetch applicants on mount
+  useEffect(() => {
+    fetchApplicants();
   }, [safeSchool]);
 
   const uncoveredCount = stats?.uncoveredCount ?? uncoveredClasses.length ?? 0;
@@ -361,6 +416,10 @@ export default function AdminCoverageClient({
         historyTotals={historyTotals}
         historyLoading={historyLoading}
         fetchAssignmentHistory={fetchAssignmentHistory}
+        showAvailableTeachersModal={() => setShowAvailableTeachersModal(true)}
+        showAvailableSubstitutesModal={() => setShowAvailableSubstitutesModal(true)}
+        showApplicantsModal={() => setShowApplicantsModal(true)}
+        pendingApplicantsCount={applicantsCounts.pending}
       />
 
       {/* Modals */}
@@ -464,6 +523,31 @@ export default function AdminCoverageClient({
         />
       )}
 
+      {showAvailableTeachersModal && (
+        <AvailableTeachersModal
+          teachers={Object.values(rotationData).flat()}
+          onClose={() => setShowAvailableTeachersModal(false)}
+        />
+      )}
+
+      {showAvailableSubstitutesModal && (
+        <AvailableSubstitutesModal
+          teachers={Object.values(rotationData).flat().filter(t => t.status === 'free')}
+          onClose={() => setShowAvailableSubstitutesModal(false)}
+        />
+      )}
+
+      {showApplicantsModal && (
+        <ApplicantsModal
+          applicants={applicants}
+          counts={applicantsCounts}
+          loading={applicantsLoading}
+          onClose={() => setShowApplicantsModal(false)}
+          onRefresh={fetchApplicants}
+          pushToast={pushToast}
+        />
+      )}
+
       {/* Race Condition Notification */}
       {raceConditionActive && (
         <div className="fixed bottom-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50">
@@ -550,6 +634,11 @@ type AdminViewProps = {
   historyTotals: { total_assignments: number; total_hours: number; total_amount: number };
   historyLoading: boolean;
   fetchAssignmentHistory: () => void;
+  // New modal handlers
+  showAvailableTeachersModal: () => void;
+  showAvailableSubstitutesModal: () => void;
+  showApplicantsModal: () => void;
+  pendingApplicantsCount: number;
 };
 
 function AdminView({
@@ -575,37 +664,74 @@ function AdminView({
   historyTotals,
   historyLoading,
   fetchAssignmentHistory,
+  showAvailableTeachersModal,
+  showAvailableSubstitutesModal,
+  showApplicantsModal,
+  pendingApplicantsCount,
 }: AdminViewProps) {
   return (
     <div className="space-y-6">
       {/* Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
+        {/* Uncovered Classes - Clickable, scrolls to section */}
+        <button 
+          onClick={() => {
+            if (uncoveredCount > 0) {
+              document.getElementById('uncovered-classes-section')?.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+          className={`text-left bg-white rounded-xl p-6 border transition-all ${
+            uncoveredCount === 0 
+              ? 'border-green-300 bg-gradient-to-br from-green-50 to-emerald-50' 
+              : 'border-red-200 hover:border-red-300 hover:shadow-md cursor-pointer'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Uncovered Classes</p>
-              <p className="text-3xl font-bold text-red-600 mt-1">{uncoveredCount}</p>
+              <p className={`text-3xl font-bold mt-1 ${uncoveredCount === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {uncoveredCount}
+              </p>
             </div>
-            <div className="p-3 bg-red-50 rounded-lg">
-              <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
+            {uncoveredCount === 0 ? (
+              <div className="p-3 bg-green-100 rounded-lg animate-bounce">
+                <span className="text-3xl">🏆</span>
+              </div>
+            ) : (
+              <div className="p-3 bg-red-50 rounded-lg">
+                <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              </div>
+            )}
+          </div>
+          {uncoveredCount === 0 ? (
+            <div className="mt-3 flex items-center text-xs text-green-600 font-medium">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
+              All classes covered! Great job! 🎉
             </div>
-          </div>
-          <div className="mt-3 flex items-center text-xs text-red-600">
-            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Next class starts in {urgentTimerText}
-          </div>
-        </div>
+          ) : (
+            <div className="mt-3 flex items-center text-xs text-red-600">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Next class starts in {urgentTimerText} — Click to view ↓
+            </div>
+          )}
+        </button>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
+        {/* Available Teachers - Clickable, opens modal */}
+        <button 
+          onClick={showAvailableTeachersModal}
+          className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Available Teachers</p>
@@ -617,15 +743,19 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <button onClick={viewAvailableTeachers} className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">
-            View available list →
-          </button>
-        </div>
+          <div className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">
+            Click to view full list →
+          </div>
+        </button>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
+        {/* Available Substitutes - Clickable, opens modal */}
+        <button 
+          onClick={showAvailableSubstitutesModal}
+          className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Active Substitutes</p>
+              <p className="text-sm text-gray-500">Available Substitutes</p>
               <p className="text-3xl font-bold text-blue-600 mt-1">{activeSubstitutes}</p>
             </div>
             <div className="p-3 bg-blue-50 rounded-lg">
@@ -634,23 +764,39 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <div className="mt-3 text-xs text-gray-600">Live from dashboard stats</div>
-        </div>
+          <div className="mt-3 text-xs text-blue-600 font-medium">Click to view full list →</div>
+        </button>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
+        {/* Pending Applicants - NEW */}
+        <button 
+          onClick={showApplicantsModal}
+          className={`text-left bg-white rounded-xl p-6 border transition-all cursor-pointer ${
+            pendingApplicantsCount > 0 
+              ? 'border-orange-200 hover:border-orange-300 hover:shadow-md bg-gradient-to-br from-orange-50 to-amber-50' 
+              : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+          }`}
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Coverage Rate</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{coverageRate}%</p>
+              <p className="text-sm text-gray-500">Pending Applicants</p>
+              <p className={`text-3xl font-bold mt-1 ${pendingApplicantsCount > 0 ? 'text-orange-600' : 'text-gray-600'}`}>
+                {pendingApplicantsCount}
+              </p>
             </div>
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+            <div className={`p-3 rounded-lg ${pendingApplicantsCount > 0 ? 'bg-orange-100' : 'bg-gray-50'}`}>
+              {pendingApplicantsCount > 0 ? (
+                <span className="text-2xl">📋</span>
+              ) : (
+                <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
             </div>
           </div>
-          <div className="mt-3 text-xs text-gray-600">Live from dashboard stats</div>
-        </div>
+          <div className={`mt-3 text-xs font-medium ${pendingApplicantsCount > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+            {pendingApplicantsCount > 0 ? `${pendingApplicantsCount} awaiting review →` : 'All applications reviewed ✓'}
+          </div>
+        </button>
       </div>
 
       {/* Emergency Mode Toggle */}
@@ -807,7 +953,7 @@ function AdminView({
 
       {/* Uncovered Classes List */}
       {uncoveredClasses?.length > 0 && (
-        <div className="bg-white rounded-xl border border-red-200">
+        <div id="uncovered-classes-section" className="bg-white rounded-xl border border-red-200">
           <div className="p-6 border-b border-red-200 bg-red-50">
             <h2 className="text-lg font-semibold text-red-900">Uncovered Classes Requiring Immediate Attention</h2>
           </div>
@@ -2367,6 +2513,507 @@ function DepartmentRotationSection({
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Available Teachers Modal
+type AvailableTeachersModalProps = {
+  teachers: TeacherView[];
+  onClose: () => void;
+};
+
+function AvailableTeachersModal({ teachers, onClose }: AvailableTeachersModalProps) {
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherView | null>(null);
+  const [filter, setFilter] = useState<'all' | 'free' | 'covering' | 'absent'>('all');
+
+  const filteredTeachers = filter === 'all' ? teachers : teachers.filter(t => t.status === filter);
+  const availableCount = teachers.filter(t => t.status === 'free').length;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Available Teachers</h2>
+            <p className="text-green-100 text-sm">{availableCount} available out of {teachers.length} total</p>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="px-6 py-3 border-b border-gray-200 flex space-x-2">
+          {(['all', 'free', 'covering', 'absent'] as const).map(status => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filter === status
+                  ? 'bg-green-100 text-green-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {status === 'all' ? 'All' : status === 'free' ? 'Available' : status === 'covering' ? 'Covering' : 'Absent'}
+              <span className="ml-1 text-xs">({status === 'all' ? teachers.length : teachers.filter(t => t.status === status).length})</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredTeachers.map(teacher => (
+              <button
+                key={teacher.id}
+                onClick={() => setSelectedTeacher(selectedTeacher?.id === teacher.id ? null : teacher)}
+                className={`text-left p-4 rounded-lg border transition-all ${
+                  selectedTeacher?.id === teacher.id
+                    ? 'border-green-500 bg-green-50 ring-2 ring-green-500'
+                    : 'border-gray-200 hover:border-green-300 hover:shadow-md'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-gray-900">{teacher.name}</h3>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    teacher.status === 'free' ? 'bg-green-100 text-green-700' :
+                    teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {teacher.status === 'free' ? 'Available' : teacher.status === 'covering' ? 'Covering' : 'Absent'}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">{teacher.department}</p>
+                
+                {selectedTeacher?.id === teacher.id && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2 animate-fadeIn">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Position:</span>
+                        <span className="ml-2 font-medium">{teacher.position || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Days Since Last:</span>
+                        <span className="ml-2 font-medium">{teacher.daysSinceLast}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Hours This Month:</span>
+                        <span className="ml-2 font-medium">{teacher.hoursThisMonth}h</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Earned This Month:</span>
+                        <span className="ml-2 font-medium text-green-600">${teacher.amountThisMonth}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Available Substitutes Modal
+type AvailableSubstitutesModalProps = {
+  teachers: TeacherView[];
+  onClose: () => void;
+};
+
+function AvailableSubstitutesModal({ teachers, onClose }: AvailableSubstitutesModalProps) {
+  const [selectedSub, setSelectedSub] = useState<TeacherView | null>(null);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Available Substitutes</h2>
+            <p className="text-blue-100 text-sm">{teachers.length} available for coverage</p>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {teachers.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <p>No substitutes currently available</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {teachers.map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setSelectedSub(selectedSub?.id === sub.id ? null : sub)}
+                  className={`w-full text-left p-4 rounded-lg border transition-all ${
+                    selectedSub?.id === sub.id
+                      ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500'
+                      : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-700 font-semibold">{sub.name.charAt(0)}</span>
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{sub.name}</h3>
+                        <p className="text-sm text-gray-600">{sub.department}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">{sub.hoursThisMonth}h this month</p>
+                      <p className="text-sm text-green-600">${sub.amountThisMonth} earned</p>
+                    </div>
+                  </div>
+                  
+                  {selectedSub?.id === sub.id && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-3 gap-4 text-sm">
+                      <div className="bg-gray-50 rounded p-3 text-center">
+                        <p className="text-lg font-bold text-gray-900">{sub.position || '-'}</p>
+                        <p className="text-xs text-gray-500">Queue Position</p>
+                      </div>
+                      <div className="bg-gray-50 rounded p-3 text-center">
+                        <p className="text-lg font-bold text-gray-900">{sub.daysSinceLast}</p>
+                        <p className="text-xs text-gray-500">Days Since Last</p>
+                      </div>
+                      <div className="bg-green-50 rounded p-3 text-center">
+                        <p className="text-lg font-bold text-green-600">${sub.amountThisMonth}</p>
+                        <p className="text-xs text-gray-500">This Month</p>
+                      </div>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Applicants Modal
+type ApplicantsModalProps = {
+  applicants: SubstituteApplicant[];
+  counts: { pending: number; approved: number; denied: number; total: number };
+  loading: boolean;
+  onClose: () => void;
+  onRefresh: () => void;
+  pushToast: (message: string, type?: 'success' | 'error') => void;
+};
+
+function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, pushToast }: ApplicantsModalProps) {
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('pending');
+  const [selectedApplicant, setSelectedApplicant] = useState<SubstituteApplicant | null>(null);
+  const [reviewMode, setReviewMode] = useState<'view' | 'approve' | 'deny'>('view');
+  const [denialReason, setDenialReason] = useState('');
+  const [adminNotes, setAdminNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const filteredApplicants = filter === 'all' ? applicants : applicants.filter(a => a.status === filter);
+
+  const handleReview = async (action: 'approve' | 'deny') => {
+    if (!selectedApplicant) return;
+    
+    setSubmitting(true);
+    try {
+      const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/substitutes/applicants/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          applicant_id: selectedApplicant.id,
+          action,
+          reason: action === 'deny' ? denialReason : null,
+          admin_notes: adminNotes,
+          reviewed_by: 'Admin'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        pushToast(`✓ Applicant ${action === 'approve' ? 'approved' : 'denied'} successfully`, 'success');
+        setSelectedApplicant(null);
+        setReviewMode('view');
+        setDenialReason('');
+        setAdminNotes('');
+        onRefresh();
+      } else {
+        pushToast(result.message || 'Failed to process review', 'error');
+      }
+    } catch (e) {
+      pushToast('Failed to process review', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl w-full max-w-5xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Substitute Applicants</h2>
+            <p className="text-orange-100 text-sm">
+              {counts.pending} pending • {counts.approved} approved • {counts.denied} denied
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="px-3 py-1.5 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors text-sm"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+            <button onClick={onClose} className="text-white/80 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="px-6 py-3 border-b border-gray-200 flex space-x-2">
+          {(['pending', 'approved', 'denied', 'all'] as const).map(status => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                filter === status
+                  ? status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                    status === 'approved' ? 'bg-green-100 text-green-700' :
+                    status === 'denied' ? 'bg-red-100 text-red-700' :
+                    'bg-gray-100 text-gray-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+              <span className="ml-1 text-xs">
+                ({status === 'all' ? counts.total : counts[status as keyof typeof counts]})
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {loading ? (
+            <div className="text-center py-12 text-gray-500">Loading applicants...</div>
+          ) : filteredApplicants.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <span className="text-4xl mb-4 block">📋</span>
+              <p>No {filter === 'all' ? '' : filter} applicants found</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredApplicants.map(applicant => (
+                <div
+                  key={applicant.id}
+                  className={`border rounded-lg overflow-hidden transition-all ${
+                    selectedApplicant?.id === applicant.id
+                      ? 'border-orange-500 ring-2 ring-orange-500'
+                      : 'border-gray-200 hover:border-orange-300'
+                  }`}
+                >
+                  {/* Applicant Header */}
+                  <button
+                    onClick={() => {
+                      setSelectedApplicant(selectedApplicant?.id === applicant.id ? null : applicant);
+                      setReviewMode('view');
+                    }}
+                    className="w-full text-left p-4 flex items-center justify-between bg-white hover:bg-gray-50"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
+                        applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                        applicant.status === 'approved' ? 'bg-green-100 text-green-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {applicant.first_name.charAt(0)}{applicant.last_name.charAt(0)}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{applicant.full_name}</h3>
+                        <p className="text-sm text-gray-600">{applicant.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">{applicant.experience_years || 0} years exp.</p>
+                        <p className="text-xs text-gray-500">Applied {applicant.applied_date}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' :
+                        applicant.status === 'approved' ? 'bg-green-100 text-green-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
+                      </span>
+                    </div>
+                  </button>
+
+                  {/* Expanded Details */}
+                  {selectedApplicant?.id === applicant.id && (
+                    <div className="border-t border-gray-200 bg-gray-50 p-4">
+                      {reviewMode === 'view' ? (
+                        <>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div className="bg-white rounded-lg p-3">
+                              <p className="text-xs text-gray-500 mb-1">Phone</p>
+                              <p className="font-medium text-gray-900">{applicant.phone || 'N/A'}</p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3">
+                              <p className="text-xs text-gray-500 mb-1">Subjects</p>
+                              <p className="font-medium text-gray-900">{applicant.subjects || 'General'}</p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3">
+                              <p className="text-xs text-gray-500 mb-1">Grade Levels</p>
+                              <p className="font-medium text-gray-900">{applicant.grade_levels || 'Any'}</p>
+                            </div>
+                            <div className="bg-white rounded-lg p-3">
+                              <p className="text-xs text-gray-500 mb-1">Availability</p>
+                              <p className="font-medium text-gray-900">{applicant.availability || 'Flexible'}</p>
+                            </div>
+                          </div>
+
+                          <div className="bg-white rounded-lg p-3 mb-4">
+                            <p className="text-xs text-gray-500 mb-1">Certifications</p>
+                            <p className="text-gray-900">{applicant.certifications || 'None listed'}</p>
+                          </div>
+
+                          {applicant.notes && (
+                            <div className="bg-white rounded-lg p-3 mb-4">
+                              <p className="text-xs text-gray-500 mb-1">Applicant Notes</p>
+                              <p className="text-gray-900">{applicant.notes}</p>
+                            </div>
+                          )}
+
+                          {applicant.denial_reason && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                              <p className="text-xs text-red-600 mb-1">Denial Reason</p>
+                              <p className="text-red-800">{applicant.denial_reason}</p>
+                            </div>
+                          )}
+
+                          {applicant.status === 'pending' && (
+                            <div className="flex space-x-3 mt-4">
+                              <button
+                                onClick={() => setReviewMode('approve')}
+                                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                              >
+                                ✓ Approve Applicant
+                              </button>
+                              <button
+                                onClick={() => setReviewMode('deny')}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+                              >
+                                ✗ Deny Applicant
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="space-y-4">
+                          <h4 className="font-semibold text-gray-900">
+                            {reviewMode === 'approve' ? '✓ Approve' : '✗ Deny'} {applicant.full_name}
+                          </h4>
+                          
+                          {reviewMode === 'deny' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Denial Reason (will be sent to applicant)
+                              </label>
+                              <textarea
+                                value={denialReason}
+                                onChange={(e) => setDenialReason(e.target.value)}
+                                placeholder="Please provide a reason for denial..."
+                                rows={3}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                              />
+                            </div>
+                          )}
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Admin Notes (internal only)
+                            </label>
+                            <textarea
+                              value={adminNotes}
+                              onChange={(e) => setAdminNotes(e.target.value)}
+                              placeholder="Optional internal notes..."
+                              rows={2}
+                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                            />
+                          </div>
+
+                          <div className="flex space-x-3">
+                            <button
+                              onClick={() => setReviewMode('view')}
+                              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleReview(reviewMode === 'approve' ? 'approve' : 'deny')}
+                              disabled={submitting || (reviewMode === 'deny' && !denialReason.trim())}
+                              className={`flex-1 px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50 ${
+                                reviewMode === 'approve'
+                                  ? 'bg-green-600 hover:bg-green-700'
+                                  : 'bg-red-600 hover:bg-red-700'
+                              }`}
+                            >
+                              {submitting ? 'Processing...' : reviewMode === 'approve' ? 'Confirm Approval' : 'Confirm Denial'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );
