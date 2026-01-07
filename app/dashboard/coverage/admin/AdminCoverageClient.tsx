@@ -72,6 +72,7 @@ export default function AdminCoverageClient({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showCreateOpeningModal, setShowCreateOpeningModal] = useState(false);
   const [showDailyScheduleModal, setShowDailyScheduleModal] = useState(false);
+  const [showRotationManagementModal, setShowRotationManagementModal] = useState(false);
 
   // Countdown (UI-only for now)
   const [urgentMM, setUrgentMM] = useState(42);
@@ -145,15 +146,46 @@ export default function AdminCoverageClient({
     }
 
     setRaceConditionActive(true);
-    pushToast(`Creating emergency coverage for ${classId}...`, 'success');
+    
+    // First find the coverage request ID from the class_id
+    const matchingClass = uncoveredClasses.find(c => c.class_id === classId);
+    if (!matchingClass) {
+      pushToast('Coverage request not found', 'error');
+      setRaceConditionActive(false);
+      return;
+    }
+    
+    pushToast(`Auto-assigning ${matchingClass.class_name || classId}...`, 'success');
 
     try {
-      const result = await assignEmergencyCoverage(classId, true, emergencyMode);
-      const className = result?.coverage_request?.class_name || result?.class_name || classId;
-      pushToast(`Emergency coverage created: ${className}`, 'success');
+      // Use the new auto-assign endpoint that picks next person in rotation
+      const response = await fetch('https://x8ki-letl-twmt.n7.xano.io/api:aeQ3kHz2/coverage/auto-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverage_id: matchingClass.id })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.assignment) {
+        pushToast(`✓ Assigned to ${result.assignment.assigned_to} (rotation-based)`, 'success');
+      } else if (result.error) {
+        throw new Error(result.message || 'Auto-assign failed');
+      } else {
+        pushToast('Assignment created', 'success');
+      }
+      
       await refreshData();
     } catch (e: any) {
-      pushToast(e?.message || 'Emergency create failed', 'error');
+      // Fallback to emergency notification if auto-assign fails
+      pushToast(`Auto-assign failed: ${e?.message}. Sending notifications instead...`, 'error');
+      try {
+        await assignEmergencyCoverage(classId, true, emergencyMode);
+        pushToast('Emergency notifications sent', 'success');
+        await refreshData();
+      } catch (e2: any) {
+        pushToast(e2?.message || 'Emergency assign failed', 'error');
+      }
     } finally {
       setRaceConditionActive(false);
     }
@@ -269,6 +301,7 @@ export default function AdminCoverageClient({
         showHistoryModal={() => setShowHistoryModal(true)}
         showCreateOpeningModal={() => setShowCreateOpeningModal(true)}
         showDailyScheduleModal={() => setShowDailyScheduleModal(true)}
+        showRotationManagementModal={() => setShowRotationManagementModal(true)}
       />
 
       {/* Modals */}
@@ -323,6 +356,15 @@ export default function AdminCoverageClient({
           onClose={() => setShowDailyScheduleModal(false)}
           uncoveredClasses={uncoveredClasses}
           onEmergencyAssign={handleEmergencyAssign}
+        />
+      )}
+
+      {showRotationManagementModal && (
+        <RotationManagementModal
+          schoolCode={safeSchool}
+          rotationData={rotationData}
+          onClose={() => setShowRotationManagementModal(false)}
+          pushToast={pushToast}
         />
       )}
 
@@ -405,6 +447,7 @@ type AdminViewProps = {
   showHistoryModal: () => void;
   showCreateOpeningModal: () => void;
   showDailyScheduleModal: () => void;
+  showRotationManagementModal: () => void;
 };
 
 function AdminView({
@@ -424,6 +467,7 @@ function AdminView({
   showHistoryModal,
   showCreateOpeningModal,
   showDailyScheduleModal,
+  showRotationManagementModal,
 }: AdminViewProps) {
   return (
     <div className="space-y-6">
@@ -532,7 +576,7 @@ function AdminView({
         <button onClick={emergencyBatchAssign} className="bg-red-600 text-white rounded-xl p-6 hover:bg-red-700 transition-colors">
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <p className="font-semibold">Emergency Batch Assign</p>
+              <p className="font-semibold">Auto-Assign All</p>
               <p className="text-sm opacity-90 mt-1">Create emergency openings for top uncovered</p>
             </div>
             <svg className="w-8 h-8 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,6 +616,9 @@ function AdminView({
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Department Coverage Rotations</h2>
             <div className="flex items-center space-x-2">
+              <button onClick={showRotationManagementModal} className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors">
+                Manage Rotation
+              </button>
               <button onClick={showHistoryModal} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
                 View History
               </button>
@@ -665,7 +712,7 @@ function AdminView({
                   onClick={() => emergencyAssign(cls.class_id)}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                 >
-                  Emergency Assign
+                  Auto-Assign
                 </button>
               </div>
             ))}
@@ -690,7 +737,7 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBat
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold mb-4">Emergency Batch Assignment</h2>
+        <h2 className="text-xl font-semibold mb-4">Auto-Assign Allment</h2>
 
         <div className="space-y-4 mb-6">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -1320,7 +1367,7 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
                     }}
                     className="flex-1 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700"
                   >
-                    Emergency Assign
+                    Auto-Assign
                   </button>
                 )}
               </div>
@@ -1329,6 +1376,211 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
         )}
 
         <div className="mt-6 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type RotationManagementModalProps = {
+  schoolCode: string;
+  rotationData: Record<string, TeacherView[]>;
+  onClose: () => void;
+  pushToast: (message: string, type?: 'success' | 'error') => void;
+};
+
+function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast }: RotationManagementModalProps) {
+  const [activeTab, setActiveTab] = useState<'rotation' | 'history'>('rotation');
+  const [historyData, setHistoryData] = useState<CoverageHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'history' && historyData.length === 0) {
+      setLoadingHistory(true);
+      adminAPI.getCoverageHistory(schoolCode)
+        .then((data) => setHistoryData(data || []))
+        .catch(() => pushToast('Failed to load history', 'error'))
+        .finally(() => setLoadingHistory(false));
+    }
+  }, [activeTab, schoolCode]);
+
+  const allStaff = Object.values(rotationData).flat();
+  const sortedByRotation = [...allStaff].sort((a, b) => b.daysSinceLast - a.daysSinceLast);
+  const nextUp = sortedByRotation.find(s => s.status === 'free');
+  const departments = Object.keys(rotationData);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 max-w-5xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-semibold">Department Rotation Management</h2>
+            <p className="text-sm text-gray-500">Fair rotation-based coverage assignment</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex border-b border-gray-200 mb-4">
+          <button
+            onClick={() => setActiveTab('rotation')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'rotation' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Current Rotation
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'history' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Assignment History
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'rotation' && (
+            <div className="space-y-6">
+              {nextUp && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold">
+                        {nextUp.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm text-purple-600 font-medium">Next Up for Coverage</p>
+                        <p className="font-semibold text-gray-900">{nextUp.name}</p>
+                        <p className="text-xs text-gray-500">{nextUp.department} • {nextUp.daysSinceLast} days since last coverage</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-purple-600">#{nextUp.position || 1}</p>
+                      <p className="text-xs text-gray-500">in rotation</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {departments.map((dept) => {
+                const deptStaff = rotationData[dept] || [];
+                const sorted = [...deptStaff].sort((a, b) => b.daysSinceLast - a.daysSinceLast);
+                
+                return (
+                  <div key={dept} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                      <h3 className="font-medium text-gray-900">{dept} Department</h3>
+                      <p className="text-xs text-gray-500">{deptStaff.length} staff in rotation</p>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+                        {sorted.map((staff, idx) => (
+                          <div
+                            key={staff.id}
+                            className={`flex-shrink-0 p-3 rounded-lg border-2 transition-all ${
+                              staff.status === 'free'
+                                ? idx === 0 ? 'border-purple-500 bg-purple-50' : 'border-green-300 bg-green-50'
+                                : staff.status === 'covering' ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
+                                staff.status === 'free' ? 'bg-green-500' : staff.status === 'covering' ? 'bg-blue-500' : 'bg-gray-400'
+                              }`}>
+                                {idx + 1}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900 whitespace-nowrap">{staff.name}</p>
+                                <p className="text-xs text-gray-500">{staff.daysSinceLast}d • {staff.hoursThisMonth}h</p>
+                              </div>
+                            </div>
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                staff.status === 'free' ? 'bg-green-100 text-green-700' : staff.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {staff.status}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div>
+              {loadingHistory ? (
+                <div className="text-center py-8 text-gray-500">Loading history...</div>
+              ) : historyData.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No assignment history yet.</div>
+              ) : (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr className="text-left text-xs text-gray-500">
+                        <th className="p-3 font-medium">Date</th>
+                        <th className="p-3 font-medium">Assigned To</th>
+                        <th className="p-3 font-medium">Class</th>
+                        <th className="p-3 font-medium">Hours</th>
+                        <th className="p-3 font-medium">Amount</th>
+                        <th className="p-3 font-medium">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {historyData.map((entry) => (
+                        <tr key={entry.id} className="text-sm">
+                          <td className="p-3">{entry.date}</td>
+                          <td className="p-3 font-medium">{entry.teacher_name}</td>
+                          <td className="p-3">{entry.class_name}</td>
+                          <td className="p-3">{entry.duration}h</td>
+                          <td className="p-3 font-medium">${entry.amount}</td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              entry.type === 'rotation' ? 'bg-purple-100 text-purple-700' : entry.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {entry.type || 'manual'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {historyData.length > 0 && (
+                <div className="mt-4 grid grid-cols-3 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Total Assignments</p>
+                    <p className="text-2xl font-bold text-gray-900">{historyData.length}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Total Hours</p>
+                    <p className="text-2xl font-bold text-gray-900">{historyData.reduce((sum, e) => sum + (e.duration || 0), 0)}h</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-500">Total Amount</p>
+                    <p className="text-2xl font-bold text-gray-900">${historyData.reduce((sum, e) => sum + (e.amount || 0), 0).toFixed(2)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end border-t border-gray-200 pt-4">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Close
           </button>
