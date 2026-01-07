@@ -317,7 +317,13 @@ export default function AdminCoverageClient({
         />
       )}
 
-      {showDailyScheduleModal && <DailyScheduleModal onClose={() => setShowDailyScheduleModal(false)} />}
+      {showDailyScheduleModal && (
+        <DailyScheduleModal
+          onClose={() => setShowDailyScheduleModal(false)}
+          uncoveredClasses={uncoveredClasses}
+          onEmergencyAssign={handleEmergencyAssign}
+        />
+      )}
 
       {/* Race Condition Notification */}
       {raceConditionActive && (
@@ -1065,14 +1071,51 @@ function CreateOpeningModal({ onClose, onCreate }: CreateOpeningModalProps) {
 
 type DailyScheduleModalProps = {
   onClose: () => void;
+  uncoveredClasses: CoverageRequest[];
+  onEmergencyAssign: (classId: string) => void;
 };
 
-function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
+function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: DailyScheduleModalProps) {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Define time slots for the schedule
+  const timeSlots = [
+    { label: '8:00 AM', start: '08:00', end: '10:00' },
+    { label: '10:00 AM', start: '10:00', end: '12:00' },
+    { label: '12:00 PM', start: '12:00', end: '14:00' },
+    { label: '2:00 PM', start: '14:00', end: '16:00' },
+    { label: '4:00 PM', start: '16:00', end: '18:00' },
+  ];
+
+  // Group classes by time slot
+  const getClassesForSlot = (slot: { start: string; end: string }) => {
+    return uncoveredClasses.filter((cls) => {
+      if (!cls.start_time) return false;
+      // Extract hour from start_time (handles "HH:MM" or "HH:MM:SS" formats)
+      const classHour = cls.start_time.substring(0, 5);
+      return classHour >= slot.start && classHour < slot.end;
+    });
+  };
+
+  // Get all classes that don't fit neatly into slots (for "Other" section)
+  const unslottedClasses = uncoveredClasses.filter((cls) => {
+    if (!cls.start_time) return true;
+    const classHour = cls.start_time.substring(0, 5);
+    return classHour < '08:00' || classHour >= '18:00';
+  });
+
+  const [selectedClass, setSelectedClass] = useState<CoverageRequest | null>(null);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+      <div className="bg-white rounded-xl p-6 max-w-5xl w-full mx-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Daily Coverage Schedule</h2>
+          <div>
+            <h2 className="text-xl font-semibold">Daily Coverage Schedule</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1080,25 +1123,153 @@ function DailyScheduleModal({ onClose }: DailyScheduleModalProps) {
           </button>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
-          {['8:00 AM', '10:00 AM', '12:00 PM', '2:00 PM', '4:00 PM'].map((time) => (
-            <div key={time} className="text-center">
-              <p className="text-sm font-medium text-gray-700 mb-2">{time}</p>
-              <div className="space-y-2">
-                {[1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className={`p-3 rounded-lg text-xs ${
-                      Math.random() > 0.5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}
-                  >
-                    {Math.random() > 0.5 ? 'Covered' : 'Open'}
+        {/* Summary Stats */}
+        <div className="flex gap-4 mb-6">
+          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg">
+            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+            <span className="text-sm font-medium text-red-700">{uncoveredClasses.length} Open</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
+            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            <span className="text-sm text-green-700">Click any open slot to assign</span>
+          </div>
+        </div>
+
+        {/* Time Slot Grid */}
+        <div className="grid grid-cols-5 gap-3">
+          {timeSlots.map((slot) => {
+            const slotClasses = getClassesForSlot(slot);
+            return (
+              <div key={slot.label} className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 text-center">{slot.label}</p>
+                </div>
+                <div className="p-2 space-y-2 min-h-[120px]">
+                  {slotClasses.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-xs text-gray-400">No classes</p>
+                    </div>
+                  ) : (
+                    slotClasses.map((cls) => (
+                      <button
+                        key={cls.id}
+                        onClick={() => setSelectedClass(cls)}
+                        className={`w-full p-2 rounded-lg text-left transition-all hover:scale-[1.02] ${
+                          cls.status === 'covered'
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                            : 'bg-red-100 text-red-800 hover:bg-red-200'
+                        }`}
+                      >
+                        <p className="text-xs font-semibold truncate">{cls.class_name || cls.class_id}</p>
+                        <p className="text-[10px] opacity-75">{cls.start_time?.substring(0, 5)} - {cls.end_time?.substring(0, 5)}</p>
+                        <p className="text-[10px] mt-1 font-medium">
+                          {cls.status === 'covered' ? '✓ Covered' : '⚠ Open'}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Unslotted classes (before 8am or after 6pm) */}
+        {unslottedClasses.length > 0 && (
+          <div className="mt-4 border border-gray-200 rounded-lg p-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">Other Times</p>
+            <div className="flex flex-wrap gap-2">
+              {unslottedClasses.map((cls) => (
+                <button
+                  key={cls.id}
+                  onClick={() => setSelectedClass(cls)}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    cls.status === 'covered'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  {cls.class_name || cls.class_id} ({cls.start_time || 'No time'})
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* No Data State */}
+        {uncoveredClasses.length === 0 && (
+          <div className="text-center py-12">
+            <svg className="w-12 h-12 text-green-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-gray-600 font-medium">All classes are covered!</p>
+            <p className="text-sm text-gray-500 mt-1">No coverage gaps for today.</p>
+          </div>
+        )}
+
+        {/* Class Detail Popup */}
+        {selectedClass && (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]" onClick={() => setSelectedClass(null)}>
+            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">{selectedClass.class_name || selectedClass.class_id}</h3>
+                  <p className="text-sm text-gray-500">Class ID: {selectedClass.class_id}</p>
+                </div>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  selectedClass.status === 'covered' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                }`}>
+                  {selectedClass.status === 'covered' ? 'Covered' : 'Open'}
+                </span>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Date</span>
+                  <span className="font-medium">{selectedClass.date || today}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Time</span>
+                  <span className="font-medium">{selectedClass.start_time} - {selectedClass.end_time}</span>
+                </div>
+                {selectedClass.substitute_name && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Assigned To</span>
+                    <span className="font-medium">{selectedClass.substitute_name}</span>
                   </div>
-                ))}
+                )}
+                {selectedClass.urgent && (
+                  <div className="flex items-center gap-2 text-sm text-red-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="font-medium">Urgent - Needs immediate coverage</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSelectedClass(null)}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Close
+                </button>
+                {selectedClass.status !== 'covered' && (
+                  <button
+                    onClick={() => {
+                      onEmergencyAssign(selectedClass.class_id);
+                      setSelectedClass(null);
+                    }}
+                    className="flex-1 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700"
+                  >
+                    Emergency Assign
+                  </button>
+                )}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
         <div className="mt-6 flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
