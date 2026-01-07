@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 
 type Toast = { id: string; message: string; type: 'success' | 'error' };
 
@@ -81,7 +81,7 @@ type District = {
   district_name: string;
   state?: string;
   status?: string;
-  applied_at?: string;
+  applied_at?: string | number;
   denial_reason?: string;
 };
 
@@ -138,6 +138,10 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
   const [earnings, setEarnings] = useState<Earnings>({ today: 0, week: 0, month: 0, yearToDate: 0, schoolBreakdown: {}, totalJobs: 0, recentLogs: [] });
   const [loading, setLoading] = useState(true);
   
+  // Track if initial load is complete - prevents re-fetch loops
+  const initialLoadComplete = useRef(false);
+  const prevApprovedCodesRef = useRef<string>('');
+  
   // Modal states
   const [showUrgentJob, setShowUrgentJob] = useState(true);
   const [showCallOutModal, setShowCallOutModal] = useState(false);
@@ -186,52 +190,49 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
   }
 
-  // Fetch districts
-  const fetchDistricts = useCallback(async () => {
+  // Get approved district codes as a stable string for dependency tracking
+  const approvedDistrictCodesStr = useMemo(() => {
+    return myDistricts.approved.map(d => d.district_code).join(',');
+  }, [myDistricts.approved]);
+
+  // Fetch functions - NOT wrapped in useCallback to avoid dependency issues
+  async function fetchDistricts() {
     try {
-      const response = await fetch(`${XANO_BASE}/districts/list`);
+      const response = await fetch(`${XANO_BASE}/districts/list?state=%20`);
       const data = await response.json();
       if (data.districts) setAllDistricts(data.districts);
     } catch (e) {
       console.error('Failed to fetch districts:', e);
     }
-  }, []);
+  }
 
-  // Fetch schools
-  const fetchSchools = useCallback(async () => {
+  async function fetchSchools() {
     try {
-      const response = await fetch(`${XANO_BASE}/schools/list`);
+      const response = await fetch(`${XANO_BASE}/schools/list?district_code=%20`);
       const data = await response.json();
       if (data.schools) setAllSchools(data.schools);
     } catch (e) {
       console.error('Failed to fetch schools:', e);
     }
-  }, []);
+  }
 
-  // Fetch my district applications
-  const fetchMyDistricts = useCallback(async () => {
+  async function fetchMyDistricts() {
     try {
       const response = await fetch(`${XANO_BASE}/substitutes/my-districts?substitute_id=${subData.employeeId}`);
       const data = await response.json();
-      if (data) setMyDistricts(data);
+      if (data && data.approved) setMyDistricts(data);
     } catch (e) {
       console.error('Failed to fetch my districts:', e);
     }
-  }, [subData.employeeId]);
+  }
 
-  // Get approved district codes
-  const approvedDistrictCodes = useMemo(() => {
-    return myDistricts.approved.map(d => d.district_code);
-  }, [myDistricts.approved]);
-
-  // Fetch available jobs
-  const fetchJobs = useCallback(async () => {
+  async function fetchJobs(approvedCodes?: string) {
     try {
-      const approvedStr = approvedDistrictCodes.length > 0 ? approvedDistrictCodes.join(',') : subData.districtCode;
+      const approvedStr = approvedCodes || subData.districtCode || ' ';
       const params = new URLSearchParams({
         school: ' ',
         district: ' ',
-        approved_districts: approvedStr || ' '
+        approved_districts: approvedStr
       });
       const response = await fetch(`${XANO_BASE}/substitutes/available-jobs?${params}`);
       const data = await response.json();
@@ -240,37 +241,39 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     } catch (e) {
       console.error('Failed to fetch jobs:', e);
     }
-  }, [approvedDistrictCodes, subData.districtCode]);
+  }
 
-  // Fetch subjects
-  const fetchSubjects = useCallback(async () => {
+  async function fetchSubjects() {
     try {
-      const response = await fetch(`${XANO_BASE}/coverage/subjects?school=${subData.schoolCode}`);
+      const response = await fetch(`${XANO_BASE}/coverage/subjects?school=${subData.schoolCode || 'blueberry'}`);
       const data = await response.json();
       if (data.subjects) setSubjects(data.subjects);
     } catch (e) {
       console.error('Failed to fetch subjects:', e);
     }
-  }, [subData.schoolCode]);
+  }
 
-  // Fetch earnings
-  const fetchEarnings = useCallback(async () => {
+  async function fetchEarnings() {
     try {
       const response = await fetch(`${XANO_BASE}/substitutes/my-earnings?substitute_id=${subData.employeeId}`);
       const data = await response.json();
-      if (data) {
+      if (data && typeof data.today !== 'undefined') {
         setEarnings({
-          today: data.today || 0, week: data.week || 0, month: data.month || 0, yearToDate: data.yearToDate || 0,
-          schoolBreakdown: data.schoolBreakdown || {}, totalJobs: data.totalJobs || 0, recentLogs: data.recentLogs || [],
+          today: data.today || 0,
+          week: data.week || 0,
+          month: data.month || 0,
+          yearToDate: data.yearToDate || 0,
+          schoolBreakdown: data.schoolBreakdown || {},
+          totalJobs: data.totalJobs || 0,
+          recentLogs: data.recentLogs || [],
         });
       }
     } catch (e) {
       console.error('Failed to fetch earnings:', e);
     }
-  }, [subData.employeeId]);
+  }
 
-  // Fetch assignments
-  const fetchAssignments = useCallback(async () => {
+  async function fetchAssignments() {
     try {
       const response = await fetch(`${XANO_BASE}/substitutes/my-assignments?substitute_id=${subData.employeeId}`);
       const data = await response.json();
@@ -281,42 +284,89 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
         const currentMinute = now.getMinutes();
         
         const allAssignments = [...(data.upcoming || []), ...(data.current || []), ...(data.completed || [])];
-        const upcoming: Assignment[] = [], current: Assignment[] = [], completed: Assignment[] = [];
+        const upcoming: Assignment[] = [];
+        const current: Assignment[] = [];
+        const completed: Assignment[] = [];
         
         for (const a of allAssignments) {
           let endHour = 15, endMinute = 30, startHour = 8, startMinute = 0;
-          if (typeof a.end_time === 'number') { const d = new Date(a.end_time); endHour = d.getHours(); endMinute = d.getMinutes(); }
-          if (typeof a.start_time === 'number') { const d = new Date(a.start_time); startHour = d.getHours(); startMinute = d.getMinutes(); }
+          if (typeof a.end_time === 'number') {
+            const d = new Date(a.end_time);
+            endHour = d.getHours();
+            endMinute = d.getMinutes();
+          }
+          if (typeof a.start_time === 'number') {
+            const d = new Date(a.start_time);
+            startHour = d.getHours();
+            startMinute = d.getMinutes();
+          }
           
           const assignment = { ...a };
-          if (a.date < today) { assignment.displayStatus = 'completed'; completed.push(assignment); }
-          else if (a.date > today) { assignment.displayStatus = 'upcoming'; upcoming.push(assignment); }
-          else {
+          if (a.date < today) {
+            assignment.displayStatus = 'completed';
+            completed.push(assignment);
+          } else if (a.date > today) {
+            assignment.displayStatus = 'upcoming';
+            upcoming.push(assignment);
+          } else {
             const currentMins = currentHour * 60 + currentMinute;
-            if (currentMins >= endHour * 60 + endMinute) { assignment.displayStatus = 'completed'; completed.push(assignment); }
-            else if (currentMins >= startHour * 60 + startMinute) { assignment.displayStatus = 'current'; current.push(assignment); }
-            else { assignment.displayStatus = 'upcoming'; upcoming.push(assignment); }
+            if (currentMins >= endHour * 60 + endMinute) {
+              assignment.displayStatus = 'completed';
+              completed.push(assignment);
+            } else if (currentMins >= startHour * 60 + startMinute) {
+              assignment.displayStatus = 'current';
+              current.push(assignment);
+            } else {
+              assignment.displayStatus = 'upcoming';
+              upcoming.push(assignment);
+            }
           }
         }
         upcoming.sort((a, b) => a.date.localeCompare(b.date));
         setMyAssignments({ upcoming, current, completed });
       }
-    } catch (e) { console.error('Failed to fetch assignments:', e); }
-  }, [subData.employeeId]);
-
-  // Initial load
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      await Promise.all([fetchDistricts(), fetchSchools(), fetchMyDistricts()]);
-      await Promise.all([fetchJobs(), fetchEarnings(), fetchAssignments(), fetchSubjects()]);
-      setLoading(false);
+    } catch (e) {
+      console.error('Failed to fetch assignments:', e);
     }
-    loadData();
-  }, [fetchDistricts, fetchSchools, fetchMyDistricts, fetchJobs, fetchEarnings, fetchAssignments, fetchSubjects]);
+  }
 
-  // Re-fetch jobs when approved districts change
-  useEffect(() => { if (!loading) fetchJobs(); }, [approvedDistrictCodes]);
+  // Initial load - runs ONCE on mount
+  useEffect(() => {
+    let mounted = true;
+    
+    async function loadData() {
+      if (!mounted) return;
+      setLoading(true);
+      
+      // First, fetch districts data
+      await Promise.all([fetchDistricts(), fetchSchools(), fetchMyDistricts()]);
+      
+      if (!mounted) return;
+      
+      // Then fetch everything else
+      await Promise.all([fetchJobs(), fetchEarnings(), fetchAssignments(), fetchSubjects()]);
+      
+      if (!mounted) return;
+      setLoading(false);
+      initialLoadComplete.current = true;
+    }
+    
+    loadData();
+    
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array = run once on mount
+
+  // Re-fetch jobs when approved districts change (but NOT on initial load)
+  useEffect(() => {
+    // Only run if initial load is complete AND the codes actually changed
+    if (initialLoadComplete.current && 
+        approvedDistrictCodesStr && 
+        approvedDistrictCodesStr !== prevApprovedCodesRef.current) {
+      prevApprovedCodesRef.current = approvedDistrictCodesStr;
+      fetchJobs(approvedDistrictCodesStr);
+    }
+  }, [approvedDistrictCodesStr]);
 
   // Accept job handler
   async function handleAcceptJob(jobId: string, isUrgent = false) {
@@ -324,17 +374,30 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
       const response = await fetch(`${XANO_BASE}/substitutes/accept-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: parseInt(jobId), substitute_id: subData.employeeId, substitute_name: subData.fullName }),
+        body: JSON.stringify({
+          job_id: parseInt(jobId),
+          substitute_id: subData.employeeId,
+          substitute_name: subData.fullName
+        }),
       });
       const result = await response.json();
       if (result.success) {
         setAcceptedJobs(prev => new Set(prev).add(jobId));
-        if (isUrgent) { setShowUrgentJob(false); setUrgentJobs(prev => prev.filter(j => j.id !== jobId)); }
-        else { setAvailableJobs(prev => prev.filter(j => j.id !== jobId)); }
+        if (isUrgent) {
+          setShowUrgentJob(false);
+          setUrgentJobs(prev => prev.filter(j => j.id !== jobId));
+        } else {
+          setAvailableJobs(prev => prev.filter(j => j.id !== jobId));
+        }
         pushToast(`✓ Job accepted! ${result.assignment?.class_name || 'Assignment'} confirmed.`, 'success');
-        fetchAssignments(); fetchEarnings();
-      } else { pushToast(result.message || 'Failed to accept job', 'error'); }
-    } catch { pushToast('Failed to accept job. Please try again.', 'error'); }
+        fetchAssignments();
+        fetchEarnings();
+      } else {
+        pushToast(result.message || 'Failed to accept job', 'error');
+      }
+    } catch {
+      pushToast('Failed to accept job. Please try again.', 'error');
+    }
   }
 
   // Call out handler
@@ -346,7 +409,8 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id: callOutJob.id, substitute_id: subData.employeeId,
+          job_id: callOutJob.id,
+          substitute_id: subData.employeeId,
           reason: CALL_OUT_REASONS.find(r => r.id === callOutReason)?.label || callOutReason,
           notes: callOutNotes.trim() || 'N/A',
         }),
@@ -354,11 +418,20 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
       const result = await response.json();
       if (result.success) {
         pushToast('Call out recorded. Job is now available for others.', 'success');
-        setShowCallOutModal(false); setCallOutJob(null); setCallOutReason(''); setCallOutNotes('');
-        fetchAssignments(); fetchJobs();
-      } else { pushToast(result.message || 'Failed to submit call out', 'error'); }
-    } catch { pushToast('Failed to submit call out.', 'error'); }
-    finally { setCallOutSubmitting(false); }
+        setShowCallOutModal(false);
+        setCallOutJob(null);
+        setCallOutReason('');
+        setCallOutNotes('');
+        fetchAssignments();
+        fetchJobs();
+      } else {
+        pushToast(result.message || 'Failed to submit call out', 'error');
+      }
+    } catch {
+      pushToast('Failed to submit call out.', 'error');
+    } finally {
+      setCallOutSubmitting(false);
+    }
   }
 
   // Apply to district
@@ -370,36 +443,87 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          substitute_id: subData.employeeId, substitute_name: subData.fullName, substitute_email: subData.email,
-          district_code: applyingDistrict.district_code, notes: applyNotes.trim() || 'N/A',
+          substitute_id: subData.employeeId,
+          substitute_name: subData.fullName,
+          substitute_email: subData.email,
+          district_code: applyingDistrict.district_code,
+          notes: applyNotes.trim() || 'N/A',
         }),
       });
       const result = await response.json();
       if (result.success) {
         pushToast(`Application submitted to ${applyingDistrict.district_name}!`, 'success');
-        setShowApplyModal(false); setApplyingDistrict(null); setApplyNotes('');
+        setShowApplyModal(false);
+        setApplyingDistrict(null);
+        setApplyNotes('');
         fetchMyDistricts();
-      } else { pushToast(result.message || 'Failed to submit application', 'error'); }
-    } catch { pushToast('Failed to submit application.', 'error'); }
-    finally { setApplySubmitting(false); }
+      } else {
+        pushToast(result.message || 'Failed to submit application', 'error');
+      }
+    } catch {
+      pushToast('Failed to submit application.', 'error');
+    } finally {
+      setApplySubmitting(false);
+    }
   }
 
   // W-2 Export
   function handleExportW2() {
     pushToast('Generating W-2 ready export...', 'success');
-    const content = `SUBSTITUTE TEACHER EARNINGS REPORT\n${'='.repeat(36)}\nGenerated: ${new Date().toLocaleDateString()}\n\nPERSONAL INFORMATION\n${'-'.repeat(20)}\nName: ${subData.fullName}\nEmployee ID: ${subData.employeeId}\nEmail: ${subData.email}\n\nEARNINGS SUMMARY\n${'-'.repeat(16)}\nToday: $${earnings.today.toFixed(2)}\nThis Week: $${earnings.week.toFixed(2)}\nThis Month: $${earnings.month.toFixed(2)}\nYear to Date: $${earnings.yearToDate.toFixed(2)}\n\nBREAKDOWN BY SCHOOL\n${'-'.repeat(19)}\n${Object.entries(earnings.schoolBreakdown).map(([s, a]) => `${s}: $${a.toFixed(2)}`).join('\n') || 'No breakdown available'}\n\nTOTAL JOBS: ${earnings.totalJobs}\n\n---\nThis document is for tax preparation purposes.`;
+    const content = `SUBSTITUTE TEACHER EARNINGS REPORT
+${'='.repeat(36)}
+Generated: ${new Date().toLocaleDateString()}
+
+PERSONAL INFORMATION
+${'-'.repeat(20)}
+Name: ${subData.fullName}
+Employee ID: ${subData.employeeId}
+Email: ${subData.email}
+
+EARNINGS SUMMARY
+${'-'.repeat(16)}
+Today: $${earnings.today.toFixed(2)}
+This Week: $${earnings.week.toFixed(2)}
+This Month: $${earnings.month.toFixed(2)}
+Year to Date: $${earnings.yearToDate.toFixed(2)}
+
+BREAKDOWN BY SCHOOL
+${'-'.repeat(19)}
+${Object.entries(earnings.schoolBreakdown).map(([s, a]) => `${s}: $${a.toFixed(2)}`).join('\n') || 'No breakdown available'}
+
+TOTAL JOBS: ${earnings.totalJobs}
+
+---
+This document is for tax preparation purposes.`;
+    
     const blob = new Blob([content], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
+    const a = document.createElement('a');
+    a.href = url;
     a.download = `W2_Earnings_${subData.employeeId}_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
     setTimeout(() => pushToast('Earnings export downloaded!', 'success'), 500);
   }
 
   function formatTime(time: string | number): string {
-    if (typeof time === 'number') return new Date(time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    if (typeof time === 'number') {
+      return new Date(time).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
     return time;
+  }
+
+  function formatDate(dateStr: string | number): string {
+    if (typeof dateStr === 'number') {
+      return new Date(dateStr).toLocaleDateString();
+    }
+    return dateStr;
   }
 
   // Filter jobs
@@ -445,13 +569,25 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     <div className="space-y-6">
       {/* Tab Navigation */}
       <div className="flex space-x-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <button onClick={() => setActiveTab('jobs')} className={`px-6 py-2 rounded-md font-medium transition-colors ${activeTab === 'jobs' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}>
+        <button
+          onClick={() => setActiveTab('jobs')}
+          className={`px-6 py-2 rounded-md font-medium transition-colors ${
+            activeTab === 'jobs' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
           Available Jobs
         </button>
-        <button onClick={() => setActiveTab('districts')} className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center space-x-2 ${activeTab === 'districts' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}>
+        <button
+          onClick={() => setActiveTab('districts')}
+          className={`px-6 py-2 rounded-md font-medium transition-colors flex items-center space-x-2 ${
+            activeTab === 'districts' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
           <span>My Districts</span>
           {myDistricts.counts.pending > 0 && (
-            <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">{myDistricts.counts.pending}</span>
+            <span className="bg-orange-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+              {myDistricts.counts.pending}
+            </span>
           )}
         </button>
       </div>
@@ -465,7 +601,10 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">My Earnings Tracker</h3>
                 <p className="text-sm text-gray-600">Track your substitute teaching income</p>
               </div>
-              <button onClick={handleExportW2} className="text-purple-600 hover:text-purple-700 font-medium text-sm flex items-center space-x-1">
+              <button
+                onClick={handleExportW2}
+                className="text-purple-600 hover:text-purple-700 font-medium text-sm flex items-center space-x-1"
+              >
                 <span>Export W-2 →</span>
               </button>
             </div>
@@ -494,22 +633,38 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
             <div className="bg-red-50 border border-red-200 rounded-xl p-5">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">🚨 Urgent: {currentUrgentJob.title}</h3>
-                  <p className="text-gray-700 text-sm mb-3">{currentUrgentJob.school_name} • {currentUrgentJob.subject} • Grade {currentUrgentJob.grade}</p>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                    🚨 Urgent: {currentUrgentJob.title}
+                  </h3>
+                  <p className="text-gray-700 text-sm mb-3">
+                    {currentUrgentJob.school_name} • {currentUrgentJob.subject} • Grade {currentUrgentJob.grade}
+                  </p>
                   <div className="grid grid-cols-4 gap-2 text-xs text-gray-600 mb-3">
                     <div><span className="font-medium">Room:</span> {currentUrgentJob.room}</div>
                     <div><span className="font-medium">Date:</span> {currentUrgentJob.date}</div>
                     <div><span className="font-medium">Time:</span> {formatTime(currentUrgentJob.startTime)}</div>
                     <div><span className="font-medium">Pay:</span> ${currentUrgentJob.pay.toFixed(2)}</div>
                   </div>
-                  {currentUrgentJob.school_address.full && (
+                  {currentUrgentJob.school_address?.full && (
                     <p className="text-xs text-gray-500 mb-3">📍 {currentUrgentJob.school_address.full}</p>
                   )}
                   <div className="flex gap-2">
-                    <button onClick={() => handleAcceptJob(currentUrgentJob.id, true)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
+                    <button
+                      onClick={() => handleAcceptJob(currentUrgentJob.id, true)}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+                    >
                       Accept (${currentUrgentJob.pay.toFixed(2)})
                     </button>
-                    <button onClick={() => { setShowUrgentJob(false); if (urgentJobs.length > 1) { setUrgentJobs(prev => prev.slice(1)); setShowUrgentJob(true); }}} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                    <button
+                      onClick={() => {
+                        setShowUrgentJob(false);
+                        if (urgentJobs.length > 1) {
+                          setUrgentJobs(prev => prev.slice(1));
+                          setShowUrgentJob(true);
+                        }
+                      }}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+                    >
                       Decline
                     </button>
                   </div>
@@ -526,24 +681,59 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
               {(['today', 'week', 'all'] as const).map((key) => (
-                <button key={key} onClick={() => setFilter(key)} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${filter === key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'}`}>
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    filter === key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'
+                  }`}
+                >
                   {key === 'today' ? 'Today' : key === 'week' ? 'This Week' : 'All'}
                 </button>
               ))}
             </div>
-            <select value={districtFilter} onChange={(e) => { setDistrictFilter(e.target.value); setSchoolFilter('all'); }} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
+            <select
+              value={districtFilter}
+              onChange={(e) => {
+                setDistrictFilter(e.target.value);
+                setSchoolFilter('all');
+              }}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+            >
               <option value="all">All Districts</option>
-              {jobDistricts.map(d => <option key={d.district_code} value={d.district_code}>{d.district_name}</option>)}
+              {jobDistricts.map(d => (
+                <option key={d.district_code} value={d.district_code}>{d.district_name}</option>
+              ))}
             </select>
-            <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
+            <select
+              value={schoolFilter}
+              onChange={(e) => setSchoolFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+            >
               <option value="all">All Schools</option>
-              {filteredSchools.map(s => <option key={s.school_code} value={s.school_code}>{s.school_name}</option>)}
+              {filteredSchools.map(s => (
+                <option key={s.school_code} value={s.school_code}>{s.school_name}</option>
+              ))}
             </select>
-            <select value={subjectFilter} onChange={(e) => setSubjectFilter(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm">
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+            >
               <option value="all">All Subjects</option>
-              {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+              {subjects.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
             </select>
-            <button onClick={() => { fetchJobs(); pushToast('Refreshed!', 'success'); }} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">🔄 Refresh</button>
+            <button
+              onClick={() => {
+                fetchJobs(approvedDistrictCodesStr || subData.districtCode);
+                pushToast('Refreshed!', 'success');
+              }}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
+            >
+              🔄 Refresh
+            </button>
           </div>
 
           {/* Jobs Grid */}
@@ -562,7 +752,11 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                       <h3 className="font-semibold text-gray-900">{job.title}</h3>
                       <p className="text-sm text-gray-600">{job.school_name}</p>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${job.type === 'full-day' ? 'bg-blue-100 text-blue-700' : job.type === 'half-day' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      job.type === 'full-day' ? 'bg-blue-100 text-blue-700' :
+                      job.type === 'half-day' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
                       {job.type === 'full-day' ? 'Full Day' : job.type === 'half-day' ? 'Half Day' : 'Period'}
                     </span>
                   </div>
@@ -575,30 +769,51 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                   </div>
 
                   {/* Expandable School Details */}
-                  <button onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)} className="text-xs text-blue-600 hover:text-blue-700 mb-3">
+                  <button
+                    onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                    className="text-xs text-blue-600 hover:text-blue-700 mb-3"
+                  >
                     {expandedJobId === job.id ? '▼ Hide details' : '▶ Show school details'}
                   </button>
                   
                   {expandedJobId === job.id && (
                     <div className="bg-gray-50 rounded-lg p-3 mb-3 text-xs space-y-2">
-                      {job.school_address.full && (
+                      {job.school_address?.full && (
                         <div><span className="font-medium">📍 Address:</span> {job.school_address.full}</div>
                       )}
-                      {job.school_admin.name && (
+                      {job.school_admin?.name && (
                         <div><span className="font-medium">👤 Admin:</span> {job.school_admin.name}</div>
                       )}
-                      {job.school_admin.email && (
-                        <div><span className="font-medium">✉️ Email:</span> <a href={`mailto:${job.school_admin.email}`} className="text-blue-600">{job.school_admin.email}</a></div>
+                      {job.school_admin?.email && (
+                        <div>
+                          <span className="font-medium">✉️ Email:</span>{' '}
+                          <a href={`mailto:${job.school_admin.email}`} className="text-blue-600">
+                            {job.school_admin.email}
+                          </a>
+                        </div>
                       )}
-                      {job.school_admin.phone && (
-                        <div><span className="font-medium">📞 Phone:</span> <a href={`tel:${job.school_admin.phone}`} className="text-blue-600">{job.school_admin.phone}</a></div>
+                      {job.school_admin?.phone && (
+                        <div>
+                          <span className="font-medium">📞 Phone:</span>{' '}
+                          <a href={`tel:${job.school_admin.phone}`} className="text-blue-600">
+                            {job.school_admin.phone}
+                          </a>
+                        </div>
                       )}
                     </div>
                   )}
 
                   <div className="flex items-center justify-between pt-3 border-t">
                     <div className="text-lg font-semibold text-gray-900">${job.pay.toFixed(2)}</div>
-                    <button onClick={() => handleAcceptJob(job.id)} disabled={acceptedJobs.has(job.id)} className={`px-4 py-2 rounded-lg text-sm font-medium ${acceptedJobs.has(job.id) ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                    <button
+                      onClick={() => handleAcceptJob(job.id)}
+                      disabled={acceptedJobs.has(job.id)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                        acceptedJobs.has(job.id)
+                          ? 'bg-gray-200 text-gray-500'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
                       {acceptedJobs.has(job.id) ? 'Accepted' : 'Accept Job'}
                     </button>
                   </div>
@@ -609,7 +824,9 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
 
           {/* My Assignments */}
           <div className="bg-white rounded-xl shadow-sm border">
-            <div className="px-5 py-4 border-b"><h2 className="text-lg font-semibold text-gray-900">My Assignments</h2></div>
+            <div className="px-5 py-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">My Assignments</h2>
+            </div>
             <div className="p-5 space-y-4">
               {myAssignments.upcoming.length === 0 && myAssignments.current.length === 0 ? (
                 <p className="text-gray-500 text-sm">No assignments. Accept some jobs above!</p>
@@ -619,7 +836,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                     <div key={a.id} className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
                       <div>
                         <div className="font-medium text-gray-900">{a.class_name}</div>
-                        <div className="text-xs text-gray-600">{a.school_name} • Room {a.room}</div>
+                        <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
                       </div>
                       <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">In Progress</span>
                     </div>
@@ -628,11 +845,21 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                     <div key={a.id} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <div>
                         <div className="font-medium text-gray-900">{a.class_name}</div>
-                        <div className="text-xs text-gray-600">{a.date} • {a.school_name} • Room {a.room}</div>
+                        <div className="text-xs text-gray-600">
+                          {a.date} • {a.school_name || a.school} • Room {a.room}
+                        </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-sm font-medium">${a.pay?.toFixed(2)}</span>
-                        <button onClick={() => { setCallOutJob(a); setShowCallOutModal(true); }} className="text-xs text-red-600 hover:text-red-700 px-2 py-1 border border-red-200 rounded">Call Out</button>
+                        <span className="text-sm font-medium">${(a.pay || 0).toFixed(2)}</span>
+                        <button
+                          onClick={() => {
+                            setCallOutJob(a);
+                            setShowCallOutModal(true);
+                          }}
+                          className="text-xs text-red-600 hover:text-red-700 px-2 py-1 border border-red-200 rounded"
+                        >
+                          Call Out
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -643,15 +870,24 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
 
           {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-4">
-            <button onClick={() => setShowCompletedModal(true)} className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md">
+            <button
+              onClick={() => setShowCompletedModal(true)}
+              className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md"
+            >
               <h3 className="text-xs font-medium text-gray-500 mb-1">Completed</h3>
               <div className="text-2xl font-bold text-gray-900">{myAssignments.completed.length}</div>
             </button>
-            <button onClick={() => setShowAvailableModal(true)} className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md">
+            <button
+              onClick={() => setShowAvailableModal(true)}
+              className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md"
+            >
               <h3 className="text-xs font-medium text-gray-500 mb-1">Available Now</h3>
               <div className="text-2xl font-bold text-blue-600">{availableJobs.length + urgentJobs.length}</div>
             </button>
-            <button onClick={() => setShowUpcomingModal(true)} className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md">
+            <button
+              onClick={() => setShowUpcomingModal(true)}
+              className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md"
+            >
               <h3 className="text-xs font-medium text-gray-500 mb-1">Upcoming</h3>
               <div className="text-2xl font-bold text-purple-600">{myAssignments.upcoming.length}</div>
             </button>
@@ -662,7 +898,9 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">My Districts</h1>
-            <p className="text-gray-600 text-sm">Manage your district applications and see opportunities across all approved districts</p>
+            <p className="text-gray-600 text-sm">
+              Manage your district applications and see opportunities across all approved districts
+            </p>
           </div>
 
           {/* Approved Districts */}
@@ -679,7 +917,10 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {myDistricts.approved.map((d) => (
-                    <div key={d.district_code} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div
+                      key={d.district_code}
+                      className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                    >
                       <div>
                         <div className="font-medium text-gray-900">{d.district_name}</div>
                         <div className="text-xs text-gray-600">{d.state}</div>
@@ -706,12 +947,19 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               ) : (
                 <div className="space-y-3">
                   {myDistricts.pending.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+                    <div
+                      key={d.id || d.district_code}
+                      className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
+                    >
                       <div>
                         <div className="font-medium text-gray-900">{d.district_name}</div>
-                        <div className="text-xs text-gray-600">Applied: {d.applied_at ? new Date(d.applied_at).toLocaleDateString() : 'Recently'}</div>
+                        <div className="text-xs text-gray-600">
+                          Applied: {d.applied_at ? formatDate(d.applied_at) : 'Recently'}
+                        </div>
                       </div>
-                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">⏳ Pending Review</span>
+                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
+                        ⏳ Pending Review
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -727,16 +975,25 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
             </div>
             <div className="p-5">
               {myDistricts.available.length === 0 ? (
-                <p className="text-gray-500 text-sm">You've applied to all available districts!</p>
+                <p className="text-gray-500 text-sm">You&apos;ve applied to all available districts!</p>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {myDistricts.available.map((d) => (
-                    <div key={d.district_code} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                    <div
+                      key={d.district_code}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                    >
                       <div>
                         <div className="font-medium text-gray-900">{d.district_name}</div>
                         <div className="text-xs text-gray-600">{d.state}</div>
                       </div>
-                      <button onClick={() => { setApplyingDistrict(d); setShowApplyModal(true); }} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+                      <button
+                        onClick={() => {
+                          setApplyingDistrict(d);
+                          setShowApplyModal(true);
+                        }}
+                        className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+                      >
                         Apply
                       </button>
                     </div>
@@ -754,11 +1011,13 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               </div>
               <div className="p-5 space-y-3">
                 {myDistricts.denied.map((d) => (
-                  <div key={d.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div key={d.id || d.district_code} className="p-3 bg-red-50 rounded-lg border border-red-200">
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="font-medium text-gray-900">{d.district_name}</div>
-                        {d.denial_reason && <div className="text-xs text-red-600 mt-1">Reason: {d.denial_reason}</div>}
+                        {d.denial_reason && (
+                          <div className="text-xs text-red-600 mt-1">Reason: {d.denial_reason}</div>
+                        )}
                       </div>
                       <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Denied</span>
                     </div>
@@ -783,7 +1042,15 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Reason *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {CALL_OUT_REASONS.map(r => (
-                    <button key={r.id} onClick={() => setCallOutReason(r.id)} className={`p-2 rounded-lg border text-left text-sm ${callOutReason === r.id ? 'border-red-500 bg-red-50 ring-2 ring-red-500' : 'border-gray-200'}`}>
+                    <button
+                      key={r.id}
+                      onClick={() => setCallOutReason(r.id)}
+                      className={`p-2 rounded-lg border text-left text-sm ${
+                        callOutReason === r.id
+                          ? 'border-red-500 bg-red-50 ring-2 ring-red-500'
+                          : 'border-gray-200'
+                      }`}
+                    >
                       {r.icon} {r.label}
                     </button>
                   ))}
@@ -791,12 +1058,32 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-                <textarea value={callOutNotes} onChange={(e) => setCallOutNotes(e.target.value)} placeholder="Additional info..." rows={2} className="w-full p-2 border rounded-lg text-sm" />
+                <textarea
+                  value={callOutNotes}
+                  onChange={(e) => setCallOutNotes(e.target.value)}
+                  placeholder="Additional info..."
+                  rows={2}
+                  className="w-full p-2 border rounded-lg text-sm"
+                />
               </div>
             </div>
             <div className="px-5 py-4 border-t flex justify-end space-x-2">
-              <button onClick={() => { setShowCallOutModal(false); setCallOutJob(null); setCallOutReason(''); setCallOutNotes(''); }} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm">Cancel</button>
-              <button onClick={handleCallOut} disabled={!callOutReason || callOutSubmitting} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm font-medium">
+              <button
+                onClick={() => {
+                  setShowCallOutModal(false);
+                  setCallOutJob(null);
+                  setCallOutReason('');
+                  setCallOutNotes('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCallOut}
+                disabled={!callOutReason || callOutSubmitting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm font-medium"
+              >
                 {callOutSubmitting ? 'Submitting...' : 'Confirm'}
               </button>
             </div>
@@ -813,17 +1100,185 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
               <p className="text-sm text-gray-600">{applyingDistrict.district_name}</p>
             </div>
             <div className="p-5 space-y-4">
-              <p className="text-sm text-gray-700">Your application will be reviewed by the district administrator. You'll be notified once approved.</p>
+              <p className="text-sm text-gray-700">
+                Your application will be reviewed by the district administrator. You&apos;ll be notified once approved.
+              </p>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes for Administrator (Optional)</label>
-                <textarea value={applyNotes} onChange={(e) => setApplyNotes(e.target.value)} placeholder="Any relevant experience or certifications..." rows={3} className="w-full p-2 border rounded-lg text-sm" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes for Administrator (Optional)
+                </label>
+                <textarea
+                  value={applyNotes}
+                  onChange={(e) => setApplyNotes(e.target.value)}
+                  placeholder="Any relevant experience or certifications..."
+                  rows={3}
+                  className="w-full p-2 border rounded-lg text-sm"
+                />
               </div>
             </div>
             <div className="px-5 py-4 border-t flex justify-end space-x-2">
-              <button onClick={() => { setShowApplyModal(false); setApplyingDistrict(null); setApplyNotes(''); }} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm">Cancel</button>
-              <button onClick={handleApplyDistrict} disabled={applySubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+              <button
+                onClick={() => {
+                  setShowApplyModal(false);
+                  setApplyingDistrict(null);
+                  setApplyNotes('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyDistrict}
+                disabled={applySubmitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+              >
                 {applySubmitting ? 'Submitting...' : 'Submit Application'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Completed Jobs Modal */}
+      {showCompletedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="font-semibold text-gray-900">Completed Jobs ({myAssignments.completed.length})</h2>
+              <button onClick={() => setShowCompletedModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {myAssignments.completed.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-8">No completed jobs yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myAssignments.completed.map((a) => (
+                    <div key={a.id} className="p-3 bg-gray-50 rounded-lg border">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium text-gray-900">{a.class_name}</div>
+                          <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                          <div className="text-xs text-gray-500 mt-1">{a.date}</div>
+                        </div>
+                        <span className="text-sm font-medium text-green-600">${(a.pay || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Available Jobs Modal */}
+      {showAvailableModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="font-semibold text-gray-900">Available Jobs ({availableJobs.length + urgentJobs.length})</h2>
+              <button onClick={() => setShowAvailableModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {urgentJobs.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium text-red-600 mb-2">🚨 Urgent</h3>
+                  <div className="space-y-2">
+                    {urgentJobs.map((job) => (
+                      <div key={job.id} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-gray-900">{job.title}</div>
+                            <div className="text-xs text-gray-600">{job.school_name} • {job.date}</div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleAcceptJob(job.id, true);
+                              setShowAvailableModal(false);
+                            }}
+                            className="text-sm bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                          >
+                            Accept ${job.pay.toFixed(2)}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {availableJobs.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Regular Jobs</h3>
+                  <div className="space-y-2">
+                    {availableJobs.slice(0, 10).map((job) => (
+                      <div key={job.id} className="p-3 bg-gray-50 rounded-lg border">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-gray-900">{job.title}</div>
+                            <div className="text-xs text-gray-600">{job.school_name} • {job.date}</div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              handleAcceptJob(job.id);
+                              setShowAvailableModal(false);
+                            }}
+                            className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                          >
+                            Accept ${job.pay.toFixed(2)}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {availableJobs.length === 0 && urgentJobs.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-8">No jobs available right now.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Jobs Modal */}
+      {showUpcomingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="font-semibold text-gray-900">Upcoming Assignments ({myAssignments.upcoming.length})</h2>
+              <button onClick={() => setShowUpcomingModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {myAssignments.upcoming.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-8">No upcoming assignments. Accept some jobs!</p>
+              ) : (
+                <div className="space-y-3">
+                  {myAssignments.upcoming.map((a) => (
+                    <div key={a.id} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-medium text-gray-900">{a.class_name}</div>
+                          <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                          <div className="text-xs text-gray-500 mt-1">{a.date} • {formatTime(a.start_time)} - {formatTime(a.end_time)}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-medium text-blue-600">${(a.pay || 0).toFixed(2)}</span>
+                          <button
+                            onClick={() => {
+                              setCallOutJob(a);
+                              setShowCallOutModal(true);
+                              setShowUpcomingModal(false);
+                            }}
+                            className="block text-xs text-red-600 hover:text-red-700 mt-1"
+                          >
+                            Call Out
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -832,7 +1287,12 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
       {/* Toast Container */}
       <div className="fixed top-4 right-4 z-50 space-y-2">
         {toasts.map((t) => (
-          <div key={t.id} className={`text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-3 max-w-sm ${t.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+          <div
+            key={t.id}
+            className={`text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-3 max-w-sm ${
+              t.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+            }`}
+          >
             <span>{t.type === 'success' ? '✓' : '✗'}</span>
             <span className="font-medium text-sm">{t.message}</span>
             <button onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))} className="ml-2">×</button>
