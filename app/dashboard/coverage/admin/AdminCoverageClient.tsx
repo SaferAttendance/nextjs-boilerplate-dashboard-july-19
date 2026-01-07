@@ -782,7 +782,7 @@ function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacher
       </div>
     </div>
   );
-}
+// Replace your CoverageHistoryModal component in AdminCoverageClient.tsx with this:
 
 type CoverageHistoryModalProps = {
   schoolCode: string;
@@ -814,20 +814,141 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
     };
   }, [schoolCode]);
 
+  // ✅ NEW: Actual CSV Export Function
+  const handleExportCSV = () => {
+    if (rows.length === 0) {
+      onExport('CSV'); // Will show "no data" toast
+      return;
+    }
+
+    // Define CSV headers
+    const headers = ['Date', 'Teacher', 'Class Covered', 'Duration (hrs)', 'Type', 'Amount', 'Status'];
+    
+    // Convert rows to CSV format
+    const csvRows = rows.map(r => [
+      r.date,
+      r.teacher_name,
+      r.class_name,
+      r.duration,
+      r.type || (r.duration >= 4 ? 'full_day' : 'partial'),
+      r.amount,
+      r.status
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...csvRows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `coverage-history-${schoolCode}-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    onExport('CSV');
+  };
+
+  // ✅ NEW: Actual PDF Export Function (using print dialog)
+  const handleExportPDF = () => {
+    if (rows.length === 0) {
+      onExport('PDF');
+      return;
+    }
+
+    // Create a printable HTML document
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Coverage History - ${schoolCode}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #333; margin-bottom: 5px; }
+          .subtitle { color: #666; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th { background-color: #f3f4f6; padding: 12px 8px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
+          td { padding: 12px 8px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+          .type-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
+          .type-partial { background-color: #dbeafe; color: #1d4ed8; }
+          .type-full { background-color: #f3e8ff; color: #7c3aed; }
+          .amount { font-weight: 600; }
+          .footer { margin-top: 30px; font-size: 12px; color: #9ca3af; }
+        </style>
+      </head>
+      <body>
+        <h1>Coverage History Report</h1>
+        <p class="subtitle">School: ${schoolCode} | Generated: ${new Date().toLocaleDateString()}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Teacher</th>
+              <th>Class Covered</th>
+              <th>Duration</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td>${r.date}</td>
+                <td>${r.teacher_name}</td>
+                <td>${r.class_name}</td>
+                <td>${r.duration}h</td>
+                <td><span class="type-badge ${r.type === 'full_day' ? 'type-full' : 'type-partial'}">${r.type || 'partial'}</span></td>
+                <td class="amount">$${r.amount}</td>
+                <td>${r.status}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Total Records: ${rows.length} | Total Amount: $${rows.reduce((sum, r) => sum + (r.amount || 0), 0)}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Open print dialog
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      // Small delay to ensure content is loaded
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    }
+
+    onExport('PDF');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Coverage History</h2>
           <div className="flex space-x-2">
+            {/* ✅ UPDATED: Use new export handlers */}
             <button
-              onClick={() => onExport('CSV')}
+              onClick={handleExportCSV}
               className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
             >
               Export CSV
             </button>
             <button
-              onClick={() => onExport('PDF')}
+              onClick={handleExportPDF}
               className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
             >
               Export PDF
@@ -857,7 +978,6 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
                     <td className="p-3">{r.date}</td>
                     <td className="p-3 font-medium">{r.teacher_name}</td>
                     <td className="p-3">{r.class_name}</td>
-                    {/* FIX: Changed from r.duration_hours to r.duration to match CoverageLog interface */}
                     <td className="p-3">{r.duration}h</td>
                     <td className="p-3">
                       <span
@@ -865,7 +985,7 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
                           r.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
                         }`}
                       >
-                        {r.type}
+                        {r.type || 'partial'}
                       </span>
                     </td>
                     <td className="p-3 font-medium">${r.amount}</td>
@@ -883,6 +1003,16 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
           </div>
         )}
 
+        {/* ✅ NEW: Summary row */}
+        {!loading && !err && rows.length > 0 && (
+          <div className="mt-4 flex justify-between items-center text-sm text-gray-600 border-t pt-4">
+            <span>Total Records: {rows.length}</span>
+            <span className="font-semibold text-gray-900">
+              Total Amount: ${rows.reduce((sum, r) => sum + (r.amount || 0), 0).toFixed(2)}
+            </span>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Close
@@ -891,6 +1021,7 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
       </div>
     </div>
   );
+}
 }
 
 type CreateOpeningModalProps = {
