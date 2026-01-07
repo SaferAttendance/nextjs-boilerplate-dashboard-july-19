@@ -368,7 +368,7 @@ export default function AdminCoverageClient({
                   reason: data.reason,
                   pay_amount: data.payAmount,
                   urgent: data.urgent,
-                  notes: data.notes
+                  notes: data.notes || null
                 })
               });
               
