@@ -19,7 +19,7 @@ type TeacherView = {
 
 function mapTeacher(t: XanoTeacher): TeacherView {
   return {
-    id: t.employee_id || String(t.id),  // ← USE employee_id
+    id: t.employee_id || String(t.id),
     name: t.name,
     daysSinceLast: Number(t.days_since_last ?? 0),
     position: t.rotation_position ?? null,
@@ -148,7 +148,6 @@ export default function AdminCoverageClient({
     pushToast(`Creating emergency coverage for ${classId}...`, 'success');
 
     try {
-      // FIX: Now correctly passing all 3 arguments to match the hook signature
       const created = await assignEmergencyCoverage(classId, true, emergencyMode);
       pushToast(`Emergency coverage created: ${created.class_name || created.class_id}`, 'success');
       await refreshData();
@@ -175,7 +174,6 @@ export default function AdminCoverageClient({
 
     try {
       for (const c of classes) {
-        // FIX: Now correctly passing all 3 arguments
         await assignEmergencyCoverage(c.class_id, true, true);
       }
       pushToast('Emergency openings created. Waiting for acceptances...', 'success');
@@ -188,7 +186,6 @@ export default function AdminCoverageClient({
     }
   }
 
-  // FIX: Now passing the required date parameter to markTeacherAbsent
   async function handleMarkAbsent(teacherId: string) {
     if (raceConditionActive) {
       pushToast('Race condition in progress - please wait', 'error');
@@ -197,8 +194,7 @@ export default function AdminCoverageClient({
     setRaceConditionActive(true);
     try {
       pushToast('Marking teacher absent...', 'success');
-      // FIX: Added today's date as required second parameter
-      const today = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" format
+      const today = new Date().toISOString().split('T')[0];
       await markTeacherAbsent(teacherId, today);
       pushToast('Teacher marked absent. Coverage needs refreshed.', 'success');
       await refreshData();
@@ -782,7 +778,7 @@ function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacher
       </div>
     </div>
   );
-// Replace your CoverageHistoryModal component in AdminCoverageClient.tsx with this:
+}
 
 type CoverageHistoryModalProps = {
   schoolCode: string;
@@ -814,17 +810,13 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
     };
   }, [schoolCode]);
 
-  // ✅ NEW: Actual CSV Export Function
   const handleExportCSV = () => {
     if (rows.length === 0) {
-      onExport('CSV'); // Will show "no data" toast
+      onExport('CSV');
       return;
     }
 
-    // Define CSV headers
     const headers = ['Date', 'Teacher', 'Class Covered', 'Duration (hrs)', 'Type', 'Amount', 'Status'];
-    
-    // Convert rows to CSV format
     const csvRows = rows.map(r => [
       r.date,
       r.teacher_name,
@@ -835,13 +827,11 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
       r.status
     ]);
 
-    // Combine headers and rows
     const csvContent = [
       headers.join(','),
       ...csvRows.map(row => row.map(cell => `"${cell}"`).join(','))
     ].join('\n');
 
-    // Create and download the file
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -855,14 +845,12 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
     onExport('CSV');
   };
 
-  // ✅ NEW: Actual PDF Export Function (using print dialog)
   const handleExportPDF = () => {
     if (rows.length === 0) {
       onExport('PDF');
       return;
     }
 
-    // Create a printable HTML document
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -875,9 +863,6 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
           table { width: 100%; border-collapse: collapse; margin-top: 20px; }
           th { background-color: #f3f4f6; padding: 12px 8px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
           td { padding: 12px 8px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-          .type-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 12px; }
-          .type-partial { background-color: #dbeafe; color: #1d4ed8; }
-          .type-full { background-color: #f3e8ff; color: #7c3aed; }
           .amount { font-weight: 600; }
           .footer { margin-top: 30px; font-size: 12px; color: #9ca3af; }
         </style>
@@ -904,7 +889,7 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
                 <td>${r.teacher_name}</td>
                 <td>${r.class_name}</td>
                 <td>${r.duration}h</td>
-                <td><span class="type-badge ${r.type === 'full_day' ? 'type-full' : 'type-partial'}">${r.type || 'partial'}</span></td>
+                <td>${r.type || 'partial'}</td>
                 <td class="amount">$${r.amount}</td>
                 <td>${r.status}</td>
               </tr>
@@ -918,13 +903,11 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
       </html>
     `;
 
-    // Open print dialog
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(printContent);
       printWindow.document.close();
       printWindow.focus();
-      // Small delay to ensure content is loaded
       setTimeout(() => {
         printWindow.print();
         printWindow.close();
@@ -940,7 +923,6 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Coverage History</h2>
           <div className="flex space-x-2">
-            {/* ✅ UPDATED: Use new export handlers */}
             <button
               onClick={handleExportCSV}
               className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
@@ -1003,7 +985,6 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
           </div>
         )}
 
-        {/* ✅ NEW: Summary row */}
         {!loading && !err && rows.length > 0 && (
           <div className="mt-4 flex justify-between items-center text-sm text-gray-600 border-t pt-4">
             <span>Total Records: {rows.length}</span>
@@ -1021,7 +1002,6 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
       </div>
     </div>
   );
-}
 }
 
 type CreateOpeningModalProps = {
