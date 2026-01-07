@@ -148,8 +148,9 @@ export default function AdminCoverageClient({
     pushToast(`Creating emergency coverage for ${classId}...`, 'success');
 
     try {
-      const created = await assignEmergencyCoverage(classId, true, emergencyMode);
-      pushToast(`Emergency coverage created: ${created.class_name || created.class_id}`, 'success');
+      const result = await assignEmergencyCoverage(classId, true, emergencyMode);
+      const className = result?.coverage_request?.class_name || result?.class_name || classId;
+      pushToast(`Emergency coverage created: ${className}`, 'success');
       await refreshData();
     } catch (e: any) {
       pushToast(e?.message || 'Emergency create failed', 'error');
