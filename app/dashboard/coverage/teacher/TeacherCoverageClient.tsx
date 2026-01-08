@@ -1066,29 +1066,62 @@ This document is for tax preparation purposes.`;
                 </select>
               </div>
 
-              {/* Period Selection (for single class) */}
-              {callOutType === 'class' && !callOutClass && (
+              {/* Class Selection (for single class) */}
+              {callOutType === 'class' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Select Class *</label>
-                  <div className="space-y-2">
-                    {schedule.map(cls => (
-                      <button
-                        key={cls.id}
-                        onClick={() => {
-                          setCallOutPeriod(cls.period);
-                          setCallOutClass(cls);
-                        }}
-                        className={`w-full text-left p-3 rounded-lg border ${
-                          callOutPeriod === cls.period
-                            ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-medium">Period {cls.period}: {cls.className}</div>
-                        <div className="text-xs text-gray-600">{cls.subject} • Room {cls.room}</div>
-                      </button>
-                    ))}
-                  </div>
+                  {schedule.length === 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-gray-500 italic">No schedule data found. Enter period manually:</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(period => (
+                          <button
+                            key={period}
+                            type="button"
+                            onClick={() => {
+                              setCallOutPeriod(period);
+                              setCallOutClass({ id: period, period, className: `Period ${period}`, room: '', subject: '', grade: '', students: 0, days: [] });
+                            }}
+                            className={`p-3 rounded-lg border text-center font-medium transition-colors ${
+                              callOutPeriod === period
+                                ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500 text-orange-700'
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            Period {period}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {schedule.sort((a, b) => a.period - b.period).map(cls => (
+                        <button
+                          key={cls.id}
+                          type="button"
+                          onClick={() => {
+                            setCallOutPeriod(cls.period);
+                            setCallOutClass(cls);
+                          }}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                            callOutPeriod === cls.period
+                              ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500'
+                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-gray-900">Period {cls.period}: {cls.className}</div>
+                              <div className="text-xs text-gray-600">{cls.subject} • Grade {cls.grade} • Room {cls.room} • {cls.students} students</div>
+                            </div>
+                            {callOutPeriod === cls.period && (
+                              <span className="text-orange-600 text-lg">✓</span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
