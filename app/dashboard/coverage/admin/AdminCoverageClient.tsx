@@ -121,6 +121,9 @@ export default function AdminCoverageClient({
   const [historyTotals, setHistoryTotals] = useState({ total_assignments: 0, total_hours: 0, total_amount: 0 });
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Covered classes state
+  const [coveredClasses, setCoveredClasses] = useState<CoverageRequest[]>([]);
+
   // Modal states
   const [showBatchAssignModal, setShowBatchAssignModal] = useState(false);
   const [showMarkAbsentModal, setShowMarkAbsentModal] = useState(false);
@@ -131,6 +134,7 @@ export default function AdminCoverageClient({
   const [showAvailableTeachersModal, setShowAvailableTeachersModal] = useState(false);
   const [showAvailableSubstitutesModal, setShowAvailableSubstitutesModal] = useState(false);
   const [showApplicantsModal, setShowApplicantsModal] = useState(false);
+  const [showCoverageDetailsModal, setShowCoverageDetailsModal] = useState<number | null>(null);
 
   // Applicants data
   const [applicants, setApplicants] = useState<SubstituteApplicant[]>([]);
@@ -194,9 +198,24 @@ export default function AdminCoverageClient({
     }
   }
 
+  // Fetch covered classes
+  async function fetchCoveredClasses() {
+    if (!safeSchool) return;
+    try {
+      const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/covered?school=${safeSchool}`);
+      const data = await response.json();
+      if (data.covered) {
+        setCoveredClasses(data.covered);
+      }
+    } catch (e) {
+      console.error('Failed to fetch covered classes:', e);
+    }
+  }
+
   // Fetch assignment history on mount and when data changes
   useEffect(() => {
     fetchAssignmentHistory();
+    fetchCoveredClasses();
   }, [safeSchool]);
 
   // Fetch applicants
@@ -256,7 +275,6 @@ export default function AdminCoverageClient({
 
     setRaceConditionActive(true);
     
-    // First find the coverage request ID from the class_id
     const matchingClass = uncoveredClasses.find(c => c.class_id === classId);
     if (!matchingClass) {
       pushToast('Coverage request not found', 'error');
@@ -267,7 +285,6 @@ export default function AdminCoverageClient({
     pushToast(`Auto-assigning ${matchingClass.class_name || classId}...`, 'success');
 
     try {
-      // Use the new auto-assign endpoint that picks next person in rotation
       const response = await fetch('https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/auto-assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,8 +302,8 @@ export default function AdminCoverageClient({
       }
       
       await refreshData();
+      await fetchCoveredClasses();
     } catch (e: any) {
-      // Fallback to emergency notification if auto-assign fails
       pushToast(`Auto-assign failed: ${e?.message}. Sending notifications instead...`, 'error');
       try {
         await assignEmergencyCoverage(classId, true, emergencyMode);
@@ -346,6 +363,41 @@ export default function AdminCoverageClient({
     } finally {
       setRaceConditionActive(false);
     }
+  }
+
+  // Handle removing an assignment
+  async function handleRemoveAssignment(coverage: CoverageRequest) {
+    if (raceConditionActive) {
+      pushToast('Operation in progress - please wait', 'error');
+      return;
+    }
+    setRaceConditionActive(true);
+    try {
+      const response = await fetch('https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/remove-assignment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coverage_id: coverage.id })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        pushToast(`✓ Assignment removed from ${coverage.class_name || coverage.class_id}`, 'success');
+        await refreshData();
+        await fetchCoveredClasses();
+      } else {
+        pushToast(result.message || 'Failed to remove assignment', 'error');
+      }
+    } catch (e: any) {
+      pushToast(e?.message || 'Failed to remove assignment', 'error');
+    } finally {
+      setRaceConditionActive(false);
+    }
+  }
+
+  // Handle viewing coverage details
+  function handleViewDetails(coverageId: number) {
+    setShowCoverageDetailsModal(coverageId);
   }
 
   return (
@@ -455,12 +507,10 @@ export default function AdminCoverageClient({
           teachers={Object.values(rotationData).flat()}
           onCreate={async (data: CreateOpeningData) => {
             try {
-              // Calculate timestamps client-side
               const [year, month, day] = data.date.split('-').map(Number);
               const [startH, startM] = data.startTime.split(':').map(Number);
               const [endH, endM] = data.endTime.split(':').map(Number);
               
-              // Create timestamps - add 5 hours for EST to UTC conversion
               const startTimestamp = Date.UTC(year, month - 1, day, startH + 5, startM);
               const endTimestamp = Date.UTC(year, month - 1, day, endH + 5, endM);
               
@@ -510,7 +560,10 @@ export default function AdminCoverageClient({
         <DailyScheduleModal
           onClose={() => setShowDailyScheduleModal(false)}
           uncoveredClasses={uncoveredClasses}
+          coveredClasses={coveredClasses}
           onEmergencyAssign={handleEmergencyAssign}
+          onRemoveAssignment={handleRemoveAssignment}
+          onViewDetails={handleViewDetails}
         />
       )}
 
@@ -548,18 +601,21 @@ export default function AdminCoverageClient({
         />
       )}
 
+      {showCoverageDetailsModal && (
+        <CoverageDetailsModal
+          coverageId={showCoverageDetailsModal}
+          onClose={() => setShowCoverageDetailsModal(null)}
+          pushToast={pushToast}
+        />
+      )}
+
       {/* Race Condition Notification */}
       {raceConditionActive && (
         <div className="fixed bottom-4 right-4 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50">
           <div className="flex items-center space-x-3">
             <div className="animate-spin">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </div>
             <div>
@@ -575,10 +631,7 @@ export default function AdminCoverageClient({
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={[
-              'text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-3 transform transition-transform duration-300 max-w-sm',
-              t.type === 'success' ? 'bg-green-500' : 'bg-red-500',
-            ].join(' ')}
+            className={`text-white px-4 py-3 rounded-xl shadow-lg flex items-center space-x-3 transform transition-transform duration-300 max-w-sm ${t.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
           >
             <div className="flex-shrink-0">
               {t.type === 'success' ? (
@@ -592,11 +645,7 @@ export default function AdminCoverageClient({
               )}
             </div>
             <div className="font-medium">{t.message}</div>
-            <button
-              onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}
-              className="flex-shrink-0 ml-2"
-              aria-label="Dismiss"
-            >
+            <button onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))} className="flex-shrink-0 ml-2" aria-label="Dismiss">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -628,13 +677,11 @@ type AdminViewProps = {
   showCreateOpeningModal: () => void;
   showDailyScheduleModal: () => void;
   showRotationManagementModal: () => void;
-  // Assignment history props
   assignmentHistory: AssignmentHistoryEntry[];
   teacherStats: TeacherStat[];
   historyTotals: { total_assignments: number; total_hours: number; total_amount: number };
   historyLoading: boolean;
   fetchAssignmentHistory: () => void;
-  // New modal handlers
   showAvailableTeachersModal: () => void;
   showAvailableSubstitutesModal: () => void;
   showApplicantsModal: () => void;
@@ -673,7 +720,7 @@ function AdminView({
     <div className="space-y-6">
       {/* Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Uncovered Classes - Clickable, scrolls to section */}
+        {/* Uncovered Classes */}
         <button 
           onClick={() => {
             if (uncoveredCount > 0) {
@@ -689,23 +736,14 @@ function AdminView({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Uncovered Classes</p>
-              <p className={`text-3xl font-bold mt-1 ${uncoveredCount === 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {uncoveredCount}
-              </p>
+              <p className={`text-3xl font-bold mt-1 ${uncoveredCount === 0 ? 'text-green-600' : 'text-red-600'}`}>{uncoveredCount}</p>
             </div>
             {uncoveredCount === 0 ? (
-              <div className="p-3 bg-green-100 rounded-lg animate-bounce">
-                <span className="text-3xl">🏆</span>
-              </div>
+              <div className="p-3 bg-green-100 rounded-lg animate-bounce"><span className="text-3xl">🏆</span></div>
             ) : (
               <div className="p-3 bg-red-50 rounded-lg">
                 <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
             )}
@@ -727,11 +765,8 @@ function AdminView({
           )}
         </button>
 
-        {/* Available Teachers - Clickable, opens modal */}
-        <button 
-          onClick={showAvailableTeachersModal}
-          className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
-        >
+        {/* Available Teachers */}
+        <button onClick={showAvailableTeachersModal} className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-green-300 hover:shadow-md transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Available Teachers</p>
@@ -743,16 +778,11 @@ function AdminView({
               </svg>
             </div>
           </div>
-          <div className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">
-            Click to view full list →
-          </div>
+          <div className="mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium">Click to view full list →</div>
         </button>
 
-        {/* Available Substitutes - Clickable, opens modal */}
-        <button 
-          onClick={showAvailableSubstitutesModal}
-          className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
-        >
+        {/* Available Substitutes */}
+        <button onClick={showAvailableSubstitutesModal} className="text-left bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Available Substitutes</p>
@@ -767,26 +797,15 @@ function AdminView({
           <div className="mt-3 text-xs text-blue-600 font-medium">Click to view full list →</div>
         </button>
 
-        {/* Pending Applicants - NEW */}
-        <button 
-          onClick={showApplicantsModal}
-          className={`text-left bg-white rounded-xl p-6 border transition-all cursor-pointer ${
-            pendingApplicantsCount > 0 
-              ? 'border-orange-200 hover:border-orange-300 hover:shadow-md bg-gradient-to-br from-orange-50 to-amber-50' 
-              : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
-          }`}
-        >
+        {/* Pending Applicants */}
+        <button onClick={showApplicantsModal} className={`text-left bg-white rounded-xl p-6 border transition-all cursor-pointer ${pendingApplicantsCount > 0 ? 'border-orange-200 hover:border-orange-300 hover:shadow-md bg-gradient-to-br from-orange-50 to-amber-50' : 'border-gray-200 hover:border-gray-300 hover:shadow-md'}`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Pending Applicants</p>
-              <p className={`text-3xl font-bold mt-1 ${pendingApplicantsCount > 0 ? 'text-orange-600' : 'text-gray-600'}`}>
-                {pendingApplicantsCount}
-              </p>
+              <p className={`text-3xl font-bold mt-1 ${pendingApplicantsCount > 0 ? 'text-orange-600' : 'text-gray-600'}`}>{pendingApplicantsCount}</p>
             </div>
             <div className={`p-3 rounded-lg ${pendingApplicantsCount > 0 ? 'bg-orange-100' : 'bg-gray-50'}`}>
-              {pendingApplicantsCount > 0 ? (
-                <span className="text-2xl">📋</span>
-              ) : (
+              {pendingApplicantsCount > 0 ? <span className="text-2xl">📋</span> : (
                 <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -811,14 +830,7 @@ function AdminView({
               <p className="text-sm text-gray-600">Broadcast to all available staff</p>
             </div>
           </div>
-          <button
-            onClick={toggleEmergencyMode}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              emergencyMode
-                ? 'bg-yellow-600 text-white hover:bg-yellow-700'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
+          <button onClick={toggleEmergencyMode} className={`px-4 py-2 rounded-lg font-medium transition-colors ${emergencyMode ? 'bg-yellow-600 text-white hover:bg-yellow-700' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}>
             {emergencyMode ? 'Deactivate' : 'Activate'}
           </button>
         </div>
@@ -869,15 +881,9 @@ function AdminView({
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">Department Coverage Rotations</h2>
             <div className="flex items-center space-x-2">
-              <button onClick={showRotationManagementModal} className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors">
-                Manage Rotation
-              </button>
-              <button onClick={showHistoryModal} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">
-                View History
-              </button>
-              <button onClick={showDailyScheduleModal} className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
-                Daily Schedule
-              </button>
+              <button onClick={showRotationManagementModal} className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors">Manage Rotation</button>
+              <button onClick={showHistoryModal} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors">View History</button>
+              <button onClick={showDailyScheduleModal} className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">Daily Schedule</button>
             </div>
           </div>
         </div>
@@ -906,9 +912,7 @@ function AdminView({
                         <tr key={teacher.id} className="text-sm">
                           <td className="py-3">
                             {teacher.position ? (
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-medium text-xs">
-                                {teacher.position}
-                              </span>
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 font-medium text-xs">{teacher.position}</span>
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
@@ -916,15 +920,7 @@ function AdminView({
                           <td className="py-3 font-medium text-gray-900">{teacher.name}</td>
                           <td className="py-3 text-gray-600">{teacher.daysSinceLast}d</td>
                           <td className="py-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                teacher.status === 'free'
-                                  ? 'bg-green-100 text-green-700'
-                                  : teacher.status === 'covering'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}
-                            >
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${teacher.status === 'free' ? 'bg-green-100 text-green-700' : teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
                               {teacher.status}
                             </span>
                           </td>
@@ -941,7 +937,7 @@ function AdminView({
         </div>
       </div>
 
-      {/* NEW: Department Rotation Management Section */}
+      {/* Department Rotation Management Section */}
       <DepartmentRotationSection
         rotationData={rotationData}
         assignmentHistory={assignmentHistory}
@@ -963,18 +959,11 @@ function AdminView({
                 <div className="flex items-center space-x-4">
                   <div className={`w-2 h-8 rounded-full ${cls.urgent ? 'bg-red-500' : 'bg-yellow-500'}`} />
                   <div>
-                    <p className="font-medium text-gray-900">
-                      {cls.class_name || cls.class_id} ({cls.class_id})
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {fmtDateTime(cls.date, cls.start_time)} → {cls.end_time}
-                    </p>
+                    <p className="font-medium text-gray-900">{cls.class_name || cls.class_id} ({cls.class_id})</p>
+                    <p className="text-sm text-gray-600">{fmtDateTime(cls.date, cls.start_time)} → {cls.end_time}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => emergencyAssign(cls.class_id)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                >
+                <button onClick={() => emergencyAssign(cls.class_id)} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
                   Auto-Assign
                 </button>
               </div>
@@ -1000,15 +989,11 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBat
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold mb-4">Auto-Assign Allment</h2>
-
+        <h2 className="text-xl font-semibold mb-4">Auto-Assign All</h2>
         <div className="space-y-4 mb-6">
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800">
-              This will create emergency openings; acceptances happen from teacher/sub flows.
-            </p>
+            <p className="text-sm text-yellow-800">This will create emergency openings; acceptances happen from teacher/sub flows.</p>
           </div>
-
           <div className="space-y-2">
             <p className="font-medium text-gray-700">Available Teachers ({available.length})</p>
             <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-60 overflow-y-auto">
@@ -1016,9 +1001,7 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBat
                 <div key={teacher.id} className="flex items-center p-3">
                   <div className="flex-1">
                     <p className="font-medium">{teacher.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {teacher.department} • Position #{teacher.position ?? '—'}
-                    </p>
+                    <p className="text-xs text-gray-500">{teacher.department} • Position #{teacher.position ?? '—'}</p>
                   </div>
                 </div>
               ))}
@@ -1026,14 +1009,9 @@ function EmergencyBatchAssignModal({ teachers, onClose, onAssign }: EmergencyBat
             </div>
           </div>
         </div>
-
         <div className="flex justify-end space-x-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Cancel
-          </button>
-          <button onClick={onAssign} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-            Create Emergency Openings
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button onClick={onAssign} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Create Emergency Openings</button>
         </div>
       </div>
     </div>
@@ -1053,42 +1031,23 @@ function MarkTeacherAbsentModal({ teachers, onClose, onMarkAbsent }: MarkTeacher
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
         <h2 className="text-xl font-semibold mb-4">Mark Teacher Absent</h2>
-
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Select Teacher</label>
-            <select
-              value={selectedTeacher}
-              onChange={(e) => setSelectedTeacher(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg"
-            >
+            <select value={selectedTeacher} onChange={(e) => setSelectedTeacher(e.target.value)} className="w-full p-2 border border-gray-300 rounded-lg">
               <option value="">Choose a teacher...</option>
-              {teachers
-                .filter((t) => t.status !== 'absent')
-                .map((teacher) => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name} - {teacher.department}
-                  </option>
-                ))}
+              {teachers.filter((t) => t.status !== 'absent').map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>{teacher.name} - {teacher.department}</option>
+              ))}
             </select>
           </div>
-
           <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <p className="text-sm text-orange-800">
-              This will mark the teacher as absent and refresh coverage needs.
-            </p>
+            <p className="text-sm text-orange-800">This will mark the teacher as absent and refresh coverage needs.</p>
           </div>
         </div>
-
         <div className="flex justify-end space-x-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Cancel
-          </button>
-          <button
-            onClick={() => selectedTeacher && onMarkAbsent(selectedTeacher)}
-            disabled={!selectedTeacher}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button onClick={() => selectedTeacher && onMarkAbsent(selectedTeacher)} disabled={!selectedTeacher} className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed">
             Mark Absent
           </button>
         </div>
@@ -1122,33 +1081,14 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [schoolCode]);
 
   const handleExportCSV = () => {
-    if (rows.length === 0) {
-      onExport('CSV');
-      return;
-    }
-
+    if (rows.length === 0) { onExport('CSV'); return; }
     const headers = ['Date', 'Teacher', 'Class Covered', 'Duration (hrs)', 'Type', 'Amount', 'Status'];
-    const csvRows = rows.map(r => [
-      r.date,
-      r.teacher_name,
-      r.class_name,
-      r.duration,
-      r.type || (r.duration >= 4 ? 'full_day' : 'partial'),
-      r.amount,
-      r.status
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...csvRows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
+    const csvRows = rows.map(r => [r.date, r.teacher_name, r.class_name, r.duration, r.type || (r.duration >= 4 ? 'full_day' : 'partial'), r.amount, r.status]);
+    const csvContent = [headers.join(','), ...csvRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1158,80 +1098,7 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-
     onExport('CSV');
-  };
-
-  const handleExportPDF = () => {
-    if (rows.length === 0) {
-      onExport('PDF');
-      return;
-    }
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Coverage History - ${schoolCode}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { color: #333; margin-bottom: 5px; }
-          .subtitle { color: #666; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th { background-color: #f3f4f6; padding: 12px 8px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
-          td { padding: 12px 8px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-          .amount { font-weight: 600; }
-          .footer { margin-top: 30px; font-size: 12px; color: #9ca3af; }
-        </style>
-      </head>
-      <body>
-        <h1>Coverage History Report</h1>
-        <p class="subtitle">School: ${schoolCode} | Generated: ${new Date().toLocaleDateString()}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Teacher</th>
-              <th>Class Covered</th>
-              <th>Duration</th>
-              <th>Type</th>
-              <th>Amount</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => `
-              <tr>
-                <td>${r.date}</td>
-                <td>${r.teacher_name}</td>
-                <td>${r.class_name}</td>
-                <td>${r.duration}h</td>
-                <td>${r.type || 'partial'}</td>
-                <td class="amount">$${r.amount}</td>
-                <td>${r.status}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-        <div class="footer">
-          <p>Total Records: ${rows.length} | Total Amount: $${rows.reduce((sum, r) => sum + (r.amount || 0), 0)}</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
-    }
-
-    onExport('PDF');
   };
 
   return (
@@ -1240,24 +1107,11 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Coverage History</h2>
           <div className="flex space-x-2">
-            <button
-              onClick={handleExportCSV}
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-            >
-              Export CSV
-            </button>
-            <button
-              onClick={handleExportPDF}
-              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-            >
-              Export PDF
-            </button>
+            <button onClick={handleExportCSV} className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Export CSV</button>
           </div>
         </div>
-
         {loading && <div className="text-sm text-gray-600">Loading history…</div>}
         {err && <div className="text-sm text-red-700 mb-3">{err}</div>}
-
         {!loading && !err && (
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full">
@@ -1279,55 +1133,29 @@ function CoverageHistoryModal({ schoolCode, onClose, onExport }: CoverageHistory
                     <td className="p-3">{r.class_name}</td>
                     <td className="p-3">{r.duration}h</td>
                     <td className="p-3">
-                      <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          r.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {r.type || 'partial'}
-                      </span>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${r.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{r.type || 'partial'}</span>
                     </td>
                     <td className="p-3 font-medium">${r.amount}</td>
                   </tr>
                 ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td className="p-3 text-sm text-gray-600" colSpan={6}>
-                      No history records yet.
-                    </td>
-                  </tr>
-                )}
+                {rows.length === 0 && <tr><td className="p-3 text-sm text-gray-600" colSpan={6}>No history records yet.</td></tr>}
               </tbody>
             </table>
           </div>
         )}
-
         {!loading && !err && rows.length > 0 && (
           <div className="mt-4 flex justify-between items-center text-sm text-gray-600 border-t pt-4">
             <span>Total Records: {rows.length}</span>
-            <span className="font-semibold text-gray-900">
-              Total Amount: ${rows.reduce((sum, r) => sum + (r.amount || 0), 0).toFixed(2)}
-            </span>
+            <span className="font-semibold text-gray-900">Total Amount: ${rows.reduce((sum, r) => sum + (r.amount || 0), 0).toFixed(2)}</span>
           </div>
         )}
-
         <div className="mt-6 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
   );
 }
-
-type CreateOpeningModalProps = {
-  onClose: () => void;
-  onCreate: (data: CreateOpeningData) => void;
-  schoolCode: string;
-  districtCode: string;
-  teachers: TeacherView[];
-};
 
 type CreateOpeningData = {
   type: string;
@@ -1349,6 +1177,14 @@ type CreateOpeningData = {
   notes: string;
 };
 
+type CreateOpeningModalProps = {
+  onClose: () => void;
+  onCreate: (data: CreateOpeningData) => void;
+  schoolCode: string;
+  districtCode: string;
+  teachers: TeacherView[];
+};
+
 function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teachers }: CreateOpeningModalProps) {
   const [openingType, setOpeningType] = useState('standard');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1368,7 +1204,6 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Auto-generate class ID when relevant fields change
   useEffect(() => {
     if (department && school && date) {
       const deptCode = department.substring(0, 4).toUpperCase();
@@ -1378,7 +1213,6 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
     }
   }, [department, school, date]);
 
-  // Calculate pay based on duration
   useEffect(() => {
     if (startTime && endTime) {
       const [startH, startM] = startTime.split(':').map(Number);
@@ -1386,39 +1220,16 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
       const startMinutes = startH * 60 + startM;
       const endMinutes = endH * 60 + endM;
       const durationHours = Math.max(0, (endMinutes - startMinutes) / 60);
-      setPayAmount(Math.round(durationHours * 35)); // $35/hour rate
+      setPayAmount(Math.round(durationHours * 35));
     }
   }, [startTime, endTime]);
 
   const selectedTeacher = teachers.find(t => t.id === teacherId);
 
   const handleSubmit = async () => {
-    if (!date || !startTime || !endTime || !department || !className) {
-      return;
-    }
-    
+    if (!date || !startTime || !endTime || !department || !className) return;
     setIsSubmitting(true);
-    
-    const data: CreateOpeningData = {
-      type: openingType,
-      date,
-      startTime,
-      endTime,
-      district,
-      school,
-      department,
-      className,
-      classId,
-      room,
-      grade,
-      teacherId,
-      teacherName: selectedTeacher?.name || '',
-      reason,
-      payAmount,
-      urgent,
-      notes,
-    };
-    
+    const data: CreateOpeningData = { type: openingType, date, startTime, endTime, district, school, department, className, classId, room, grade, teacherId, teacherName: selectedTeacher?.name || '', reason, payAmount, urgent, notes };
     await onCreate(data);
     setIsSubmitting(false);
   };
@@ -1433,22 +1244,14 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold">Create Coverage Opening</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-
         <div className="space-y-6">
-          {/* Opening Type & Urgency */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Opening Type</label>
-              <select
-                value={openingType}
-                onChange={(e) => setOpeningType(e.target.value)}
-                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
+              <select value={openingType} onChange={(e) => setOpeningType(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
                 <option value="standard">Standard Coverage</option>
                 <option value="emergency">Emergency Coverage</option>
                 <option value="long-term">Long-term Substitute</option>
@@ -1456,178 +1259,89 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
             </div>
             <div className="flex items-end">
               <label className="flex items-center space-x-3 p-2.5 border border-gray-300 rounded-lg w-full cursor-pointer hover:bg-gray-50">
-                <input
-                  type="checkbox"
-                  checked={urgent}
-                  onChange={(e) => setUrgent(e.target.checked)}
-                  className="w-5 h-5 text-red-600 rounded focus:ring-red-500"
-                />
+                <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} className="w-5 h-5 text-red-600 rounded focus:ring-red-500" />
                 <span className="text-sm font-medium text-gray-700">🚨 Mark as Urgent</span>
               </label>
             </div>
           </div>
-
-          {/* Date & Time */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Date & Time</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
             </div>
           </div>
-
-          {/* Location */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Location</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">District</label>
-                <input
-                  type="text"
-                  value={district}
-                  onChange={(e) => setDistrict(e.target.value)}
-                  placeholder="e.g., 0001"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="text" value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="e.g., 0001" className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">School</label>
-                <input
-                  type="text"
-                  value={school}
-                  onChange={(e) => setSchool(e.target.value)}
-                  placeholder="e.g., blueberry"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="text" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="e.g., blueberry" className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
             </div>
           </div>
-
-          {/* Class Details */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Class Details</h3>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
-                <select
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
+                <select value={department} onChange={(e) => setDepartment(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
                   <option value="">Select department...</option>
-                  {departments.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
-                <select
-                  value={grade}
-                  onChange={(e) => setGrade(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
+                <select value={grade} onChange={(e) => setGrade(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
                   <option value="">Select grade...</option>
-                  {grades.map(g => (
-                    <option key={g} value={g}>Grade {g}</option>
-                  ))}
+                  {grades.map(g => <option key={g} value={g}>Grade {g}</option>)}
                 </select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Class Name *</label>
-                <input
-                  type="text"
-                  value={className}
-                  onChange={(e) => setClassName(e.target.value)}
-                  placeholder="e.g., Algebra I"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="text" value={className} onChange={(e) => setClassName(e.target.value)} placeholder="e.g., Algebra I" className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
-                <input
-                  type="text"
-                  value={room}
-                  onChange={(e) => setRoom(e.target.value)}
-                  placeholder="e.g., Room 101"
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+                <input type="text" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g., Room 101" className="w-full p-2.5 border border-gray-300 rounded-lg" />
               </div>
             </div>
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Class ID</label>
-              <input
-                type="text"
-                value={classId}
-                onChange={(e) => setClassId(e.target.value)}
-                placeholder="Auto-generated"
-                className="w-full p-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
-              />
-              <p className="mt-1 text-xs text-gray-500">Auto-generated based on department, school, and date</p>
-            </div>
           </div>
-
-          {/* Teacher & Reason */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Coverage Reason</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Teacher Being Covered</label>
-                <select
-                  value={teacherId}
-                  onChange={(e) => setTeacherId(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
+                <select value={teacherId} onChange={(e) => setTeacherId(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
                   <option value="">Select teacher...</option>
-                  {teachers.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} - {t.department}</option>
-                  ))}
+                  {teachers.map(t => <option key={t.id} value={t.id}>{t.name} - {t.department}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-                <select
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
+                <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-2.5 border border-gray-300 rounded-lg">
                   <option value="">Select reason...</option>
-                  {reasons.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
+                  {reasons.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
             </div>
           </div>
-
-          {/* Pay & Notes */}
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Compensation & Notes</h3>
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1635,12 +1349,7 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
                 <label className="block text-sm font-medium text-gray-700 mb-1">Pay Amount</label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(Number(e.target.value))}
-                    className="w-full p-2.5 pl-7 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                  <input type="number" value={payAmount} onChange={(e) => setPayAmount(Number(e.target.value))} className="w-full p-2.5 pl-7 border border-gray-300 rounded-lg" />
                 </div>
                 <p className="mt-1 text-xs text-gray-500">Auto-calculated at $35/hour</p>
               </div>
@@ -1660,18 +1369,10 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any additional information for the substitute..."
-                rows={3}
-                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any additional information for the substitute..." rows={3} className="w-full p-2.5 border border-gray-300 rounded-lg" />
             </div>
           </div>
         </div>
-
-        {/* Summary */}
         {className && department && (
           <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h4 className="text-sm font-semibold text-gray-900 mb-2">Summary</h4>
@@ -1684,30 +1385,10 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
             </p>
           </div>
         )}
-
         <div className="mt-6 flex justify-end space-x-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!department || !className || !date || isSubmitting}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-          >
-            {isSubmitting ? (
-              <>
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span>Creating...</span>
-              </>
-            ) : (
-              <span>Create Opening</span>
-            )}
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button onClick={handleSubmit} disabled={!department || !className || !date || isSubmitting} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+            {isSubmitting ? <span>Creating...</span> : <span>Create Opening</span>}
           </button>
         </div>
       </div>
@@ -1715,59 +1396,43 @@ function CreateOpeningModal({ onClose, onCreate, schoolCode, districtCode, teach
   );
 }
 
+// NEW: Updated DailyScheduleModal with tabs and list view
 type DailyScheduleModalProps = {
   onClose: () => void;
   uncoveredClasses: CoverageRequest[];
+  coveredClasses: CoverageRequest[];
   onEmergencyAssign: (classId: string) => void;
+  onRemoveAssignment: (coverage: CoverageRequest) => void;
+  onViewDetails: (coverageId: number) => void;
 };
 
-function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: DailyScheduleModalProps) {
-  const today = new Date().toISOString().split('T')[0];
+function DailyScheduleModal({ 
+  onClose, 
+  uncoveredClasses, 
+  coveredClasses, 
+  onEmergencyAssign,
+  onRemoveAssignment,
+  onViewDetails 
+}: DailyScheduleModalProps) {
+  const [activeTab, setActiveTab] = useState<'all' | 'covered' | 'uncovered'>('all');
   
-  // Ensure we have an array to work with
-  const classes = Array.isArray(uncoveredClasses) ? uncoveredClasses : [];
+  const allClasses = [...uncoveredClasses, ...coveredClasses];
+  
+  const displayClasses = activeTab === 'all' ? allClasses :
+                         activeTab === 'covered' ? coveredClasses :
+                         uncoveredClasses;
 
-  // Helper to convert timestamp or time string to "HH:MM" format
-  const formatTime = (timeValue: string | number | null | undefined): string | null => {
-    if (!timeValue) return null;
-    
-    // If it's a number (Unix timestamp in milliseconds)
-    if (typeof timeValue === 'number') {
-      const date = new Date(timeValue);
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    }
-    
-    // If it's a string that looks like a timestamp (all digits, long)
-    if (typeof timeValue === 'string' && /^\d{10,}$/.test(timeValue)) {
-      const date = new Date(parseInt(timeValue, 10));
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    }
-    
-    // If it's already a time string like "09:00" or "09:00:00"
-    if (typeof timeValue === 'string' && timeValue.includes(':')) {
-      return timeValue.substring(0, 5);
-    }
-    
-    return null;
-  };
-
-  // Helper to format time for display (12-hour format)
+  // Helper to format time
   const formatTimeDisplay = (timeValue: string | number | null | undefined): string => {
     if (!timeValue) return '?';
-    
-    // If it's a number (Unix timestamp in milliseconds)
     if (typeof timeValue === 'number') {
       const date = new Date(timeValue);
       return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     }
-    
-    // If it's a string that looks like a timestamp
     if (typeof timeValue === 'string' && /^\d{10,}$/.test(timeValue)) {
       const date = new Date(parseInt(timeValue, 10));
       return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     }
-    
-    // If it's already a time string
     if (typeof timeValue === 'string' && timeValue.includes(':')) {
       const [hours, minutes] = timeValue.split(':');
       const h = parseInt(hours, 10);
@@ -1775,48 +1440,21 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
       const h12 = h % 12 || 12;
       return `${h12}:${minutes} ${ampm}`;
     }
-    
     return '?';
   };
-  
-  // Define time slots for the schedule
-  const timeSlots = [
-    { label: '8:00 AM', start: '08:00', end: '10:00' },
-    { label: '10:00 AM', start: '10:00', end: '12:00' },
-    { label: '12:00 PM', start: '12:00', end: '14:00' },
-    { label: '2:00 PM', start: '14:00', end: '16:00' },
-    { label: '4:00 PM', start: '16:00', end: '18:00' },
-  ];
-
-  // Group classes by time slot
-  const getClassesForSlot = (slot: { start: string; end: string }) => {
-    return classes.filter((cls) => {
-      const classHour = formatTime(cls.start_time);
-      if (!classHour) return false;
-      return classHour >= slot.start && classHour < slot.end;
-    });
-  };
-
-  // Get all classes that don't fit neatly into slots (for "Other" section)
-  const unslottedClasses = classes.filter((cls) => {
-    const classHour = formatTime(cls.start_time);
-    if (!classHour) return true;
-    return classHour < '08:00' || classHour >= '18:00';
-  });
-
-  const [selectedClass, setSelectedClass] = useState<CoverageRequest | null>(null);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-5xl w-full mx-4 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-xl w-full max-w-5xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Daily Coverage Schedule</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            <h2 className="text-xl font-bold text-white">Daily Coverage Schedule</h2>
+            <p className="text-purple-100 text-sm">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-white/80 hover:text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -1824,159 +1462,218 @@ function DailyScheduleModal({ onClose, uncoveredClasses, onEmergencyAssign }: Da
         </div>
 
         {/* Summary Stats */}
-        <div className="flex gap-4 mb-6">
-          <div className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-sm font-medium text-red-700">{classes.length} Open</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex gap-4">
+          <div className="flex items-center gap-2 px-4 py-2 bg-green-100 rounded-lg">
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
-            <span className="text-sm text-green-700">Click any open slot to assign</span>
+            <span className="text-sm font-medium text-green-700">{coveredClasses.length} Covered</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-red-100 rounded-lg">
+            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+            <span className="text-sm font-medium text-red-700">{uncoveredClasses.length} Open</span>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 rounded-lg">
+            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+            <span className="text-sm font-medium text-blue-700">{allClasses.length} Total</span>
           </div>
         </div>
 
-        {/* Time Slot Grid */}
-        <div className="grid grid-cols-5 gap-3">
-          {timeSlots.map((slot) => {
-            const slotClasses = getClassesForSlot(slot);
-            return (
-              <div key={slot.label} className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-                  <p className="text-sm font-semibold text-gray-700 text-center">{slot.label}</p>
-                </div>
-                <div className="p-2 space-y-2 min-h-[120px]">
-                  {slotClasses.length === 0 ? (
-                    <div className="text-center py-4">
-                      <p className="text-xs text-gray-400">No classes</p>
-                    </div>
-                  ) : (
-                    slotClasses.map((cls) => (
-                      <button
-                        key={cls.id}
-                        onClick={() => setSelectedClass(cls)}
-                        className={`w-full p-2 rounded-lg text-left transition-all hover:scale-[1.02] ${
-                          cls.status === 'covered'
-                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                            : 'bg-red-100 text-red-800 hover:bg-red-200'
-                        }`}
-                      >
-                        <p className="text-xs font-semibold truncate">{cls.class_name || cls.class_id}</p>
-                        <p className="text-[10px] opacity-75">
-                          {formatTimeDisplay(cls.start_time)} - {formatTimeDisplay(cls.end_time)}
-                        </p>
-                        <p className="text-[10px] mt-1 font-medium">
-                          {cls.status === 'covered' ? '✓ Covered' : '⚠ Open'}
-                        </p>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        {/* Filter Tabs */}
+        <div className="px-6 py-3 border-b border-gray-200 flex space-x-2">
+          {(['all', 'covered', 'uncovered'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? tab === 'covered' ? 'bg-green-100 text-green-700' :
+                    tab === 'uncovered' ? 'bg-red-100 text-red-700' :
+                    'bg-purple-100 text-purple-700'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {tab === 'all' ? 'All Classes' : tab === 'covered' ? '✓ Covered' : '⚠ Uncovered'}
+              <span className="ml-1 text-xs">
+                ({tab === 'all' ? allClasses.length : tab === 'covered' ? coveredClasses.length : uncoveredClasses.length})
+              </span>
+            </button>
+          ))}
         </div>
 
-        {/* Unslotted classes (before 8am or after 6pm) */}
-        {unslottedClasses.length > 0 && (
-          <div className="mt-4 border border-gray-200 rounded-lg p-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">Other Times</p>
-            <div className="flex flex-wrap gap-2">
-              {unslottedClasses.map((cls) => (
-                <button
-                  key={cls.id}
-                  onClick={() => setSelectedClass(cls)}
-                  className={`px-3 py-2 rounded-lg text-sm ${
-                    cls.status === 'covered'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}
-                >
-                  {cls.class_name || cls.class_id} ({formatTimeDisplay(cls.start_time) || 'No time'})
-                </button>
-              ))}
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {displayClasses.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">
+                {activeTab === 'covered' ? '📋' : activeTab === 'uncovered' ? '🎉' : '📅'}
+              </div>
+              <p className="text-gray-600">
+                {activeTab === 'covered' ? 'No covered classes' : 
+                 activeTab === 'uncovered' ? 'All classes are covered!' : 
+                 'No classes scheduled'}
+              </p>
             </div>
-          </div>
-        )}
-
-        {/* No Data State */}
-        {classes.length === 0 && (
-          <div className="text-center py-12">
-            <svg className="w-12 h-12 text-green-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-gray-600 font-medium">All classes are covered!</p>
-            <p className="text-sm text-gray-500 mt-1">No coverage gaps for today.</p>
-          </div>
-        )}
-
-        {/* Class Detail Popup */}
-        {selectedClass && (
-          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]" onClick={() => setSelectedClass(null)}>
-            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold">{selectedClass.class_name || selectedClass.class_id}</h3>
-                  <p className="text-sm text-gray-500">Class ID: {selectedClass.class_id}</p>
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  selectedClass.status === 'covered' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                }`}>
-                  {selectedClass.status === 'covered' ? 'Covered' : 'Open'}
-                </span>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Date</span>
-                  <span className="font-medium">{selectedClass.date || today}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Time</span>
-                  <span className="font-medium">{formatTimeDisplay(selectedClass.start_time)} - {formatTimeDisplay(selectedClass.end_time)}</span>
-                </div>
-                {selectedClass.substitute_name && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Assigned To</span>
-                    <span className="font-medium">{selectedClass.substitute_name}</span>
-                  </div>
-                )}
-                {selectedClass.urgent && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span className="font-medium">Urgent - Needs immediate coverage</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setSelectedClass(null)}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                >
-                  Close
-                </button>
-                {selectedClass.status !== 'covered' && (
-                  <button
-                    onClick={() => {
-                      onEmergencyAssign(selectedClass.class_id);
-                      setSelectedClass(null);
-                    }}
-                    className="flex-1 px-4 py-2 text-white bg-red-600 rounded-lg hover:bg-red-700"
+          ) : (
+            <div className="space-y-3">
+              {displayClasses.map((cls) => {
+                const isCovered = cls.status === 'covered';
+                return (
+                  <div
+                    key={cls.id}
+                    className={`p-4 rounded-lg border transition-all ${
+                      isCovered 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-red-50 border-red-200'
+                    }`}
                   >
-                    Auto-Assign
-                  </button>
-                )}
-              </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className={`w-3 h-12 rounded-full ${isCovered ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-900">{cls.class_name || cls.class_id}</h3>
+                            {cls.urgent && (
+                              <span className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded-full">🚨 Urgent</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            {formatTimeDisplay(cls.start_time)} - {formatTimeDisplay(cls.end_time)} • Room {cls.room || 'TBD'}
+                          </p>
+                          {isCovered && cls.substitute_name && (
+                            <p className="text-sm text-green-700 font-medium mt-1">
+                              ✓ Covered by: {cls.substitute_name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => onViewDetails(cls.id)}
+                          className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
+                        >
+                          Details
+                        </button>
+                        {isCovered ? (
+                          <button
+                            onClick={() => onRemoveAssignment(cls)}
+                            className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 rounded-lg border border-red-200"
+                          >
+                            Remove Assignment
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onEmergencyAssign(cls.class_id)}
+                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+                          >
+                            Auto-Assign
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        <div className="mt-6 flex justify-end">
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
           <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             Close
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Coverage Details Modal
+type CoverageDetailsModalProps = {
+  coverageId: number;
+  onClose: () => void;
+  pushToast: (message: string, type?: 'success' | 'error') => void;
+};
+
+function CoverageDetailsModal({ coverageId, onClose, pushToast }: CoverageDetailsModalProps) {
+  const [details, setDetails] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchDetails() {
+      try {
+        const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/coverage/${coverageId}`);
+        const data = await response.json();
+        setDetails(data);
+      } catch (e) {
+        pushToast('Failed to load coverage details', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDetails();
+  }, [coverageId]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <div className="bg-white rounded-xl p-6 max-w-lg w-full mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Coverage Details</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="py-8 text-center text-gray-500">Loading...</div>
+        ) : details ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Class</p>
+                <p className="font-medium">{details.class_name || details.class_id}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Status</p>
+                <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${details.status === 'covered' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {details.status}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Date</p>
+                <p className="font-medium">{details.date}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Time</p>
+                <p className="font-medium">{details.start_time} - {details.end_time}</p>
+              </div>
+              {details.substitute_name && (
+                <div className="col-span-2">
+                  <p className="text-sm text-gray-500">Assigned To</p>
+                  <p className="font-medium">{details.substitute_name}</p>
+                </div>
+              )}
+              {details.room && (
+                <div>
+                  <p className="text-sm text-gray-500">Room</p>
+                  <p className="font-medium">{details.room}</p>
+                </div>
+              )}
+              {details.department && (
+                <div>
+                  <p className="text-sm text-gray-500">Department</p>
+                  <p className="font-medium">{details.department}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="py-8 text-center text-gray-500">No details available</div>
+        )}
+
+        <div className="mt-6 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
@@ -2026,20 +1723,10 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
         </div>
 
         <div className="flex border-b border-gray-200 mb-4">
-          <button
-            onClick={() => setActiveTab('rotation')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'rotation' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+          <button onClick={() => setActiveTab('rotation')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'rotation' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             Current Rotation
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'history' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+          <button onClick={() => setActiveTab('history')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             Assignment History
           </button>
         </div>
@@ -2081,18 +1768,9 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
                     <div className="p-4">
                       <div className="flex items-center space-x-2 overflow-x-auto pb-2">
                         {sorted.map((staff, idx) => (
-                          <div
-                            key={staff.id}
-                            className={`flex-shrink-0 p-3 rounded-lg border-2 transition-all ${
-                              staff.status === 'free'
-                                ? idx === 0 ? 'border-purple-500 bg-purple-50' : 'border-green-300 bg-green-50'
-                                : staff.status === 'covering' ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50 opacity-60'
-                            }`}
-                          >
+                          <div key={staff.id} className={`flex-shrink-0 p-3 rounded-lg border-2 transition-all ${staff.status === 'free' ? idx === 0 ? 'border-purple-500 bg-purple-50' : 'border-green-300 bg-green-50' : staff.status === 'covering' ? 'border-blue-300 bg-blue-50' : 'border-gray-300 bg-gray-50 opacity-60'}`}>
                             <div className="flex items-center space-x-2">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-                                staff.status === 'free' ? 'bg-green-500' : staff.status === 'covering' ? 'bg-blue-500' : 'bg-gray-400'
-                              }`}>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${staff.status === 'free' ? 'bg-green-500' : staff.status === 'covering' ? 'bg-blue-500' : 'bg-gray-400'}`}>
                                 {idx + 1}
                               </div>
                               <div>
@@ -2101,9 +1779,7 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
                               </div>
                             </div>
                             <div className="mt-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                staff.status === 'free' ? 'bg-green-100 text-green-700' : staff.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                              }`}>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${staff.status === 'free' ? 'bg-green-100 text-green-700' : staff.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
                                 {staff.status}
                               </span>
                             </div>
@@ -2145,9 +1821,7 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
                           <td className="p-3">{entry.duration}h</td>
                           <td className="p-3 font-medium">${entry.amount}</td>
                           <td className="p-3">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              entry.type === 'rotation' ? 'bg-purple-100 text-purple-700' : entry.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
-                            }`}>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${entry.type === 'rotation' ? 'bg-purple-100 text-purple-700' : entry.type === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
                               {entry.type || 'manual'}
                             </span>
                           </td>
@@ -2179,9 +1853,7 @@ function RotationManagementModal({ schoolCode, rotationData, onClose, pushToast 
         </div>
 
         <div className="mt-6 flex justify-end border-t border-gray-200 pt-4">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
@@ -2211,30 +1883,23 @@ function DepartmentRotationSection({
   
   const departments = Object.keys(rotationData);
   
-  // Filter history by department if selected
   const filteredHistory = selectedDepartment === 'all' 
     ? assignmentHistory 
     : assignmentHistory.filter(h => h.department === selectedDepartment);
   
-  // Get rotation data for selected department or all
   const displayRotation = selectedDepartment === 'all'
     ? rotationData
     : { [selectedDepartment]: rotationData[selectedDepartment] || [] };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {/* Header */}
       <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">Department Rotation Management</h2>
             <p className="text-indigo-100 text-sm mt-1">Fair rotation-based coverage assignments with full audit trail</p>
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={historyLoading}
-            className="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors flex items-center space-x-2"
-          >
+          <button onClick={onRefresh} disabled={historyLoading} className="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors flex items-center space-x-2">
             <svg className={`w-4 h-4 ${historyLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
@@ -2243,17 +1908,9 @@ function DepartmentRotationSection({
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-gray-200">
         <div className="flex">
-          <button
-            onClick={() => setActiveTab('rotation')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'rotation'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+          <button onClick={() => setActiveTab('rotation')} className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'rotation' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             <span className="flex items-center space-x-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -2261,14 +1918,7 @@ function DepartmentRotationSection({
               <span>Rotation Queue</span>
             </span>
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'history'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+          <button onClick={() => setActiveTab('history')} className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             <span className="flex items-center space-x-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2276,14 +1926,7 @@ function DepartmentRotationSection({
               <span>Assignment History</span>
             </span>
           </button>
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'stats'
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+          <button onClick={() => setActiveTab('stats')} className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'stats' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             <span className="flex items-center space-x-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -2294,22 +1937,14 @@ function DepartmentRotationSection({
         </div>
       </div>
 
-      {/* Department Filter */}
       <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
         <div className="flex items-center space-x-3">
           <span className="text-sm font-medium text-gray-700">Department:</span>
-          <select
-            value={selectedDepartment}
-            onChange={(e) => setSelectedDepartment(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          >
+          <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
             <option value="all">All Departments</option>
-            {departments.map(dept => (
-              <option key={dept} value={dept}>{dept}</option>
-            ))}
+            {departments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
           </select>
           
-          {/* Quick Stats */}
           <div className="ml-auto flex items-center space-x-6 text-sm">
             <div className="flex items-center space-x-2">
               <span className="text-gray-500">Total Assignments:</span>
@@ -2327,9 +1962,7 @@ function DepartmentRotationSection({
         </div>
       </div>
 
-      {/* Content */}
       <div className="p-6">
-        {/* Rotation Queue Tab */}
         {activeTab === 'rotation' && (
           <div className="space-y-6">
             {Object.entries(displayRotation).map(([dept, teachers]) => (
@@ -2340,60 +1973,31 @@ function DepartmentRotationSection({
                 </div>
                 <div className="divide-y divide-gray-100">
                   {teachers.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-gray-500">
-                      No teachers in rotation for this department
-                    </div>
+                    <div className="px-4 py-8 text-center text-gray-500">No teachers in rotation for this department</div>
                   ) : (
-                    teachers
-                      .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
-                      .map((teacher, index) => (
-                        <div
-                          key={teacher.id}
-                          className={`px-4 py-3 flex items-center justify-between ${
-                            index === 0 ? 'bg-green-50 border-l-4 border-green-500' : ''
-                          }`}
-                        >
-                          <div className="flex items-center space-x-4">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                              index === 0 
-                                ? 'bg-green-500 text-white' 
-                                : 'bg-gray-200 text-gray-600'
-                            }`}>
-                              {index + 1}
+                    teachers.sort((a, b) => (a.position ?? 999) - (b.position ?? 999)).map((teacher, index) => (
+                      <div key={teacher.id} className={`px-4 py-3 flex items-center justify-between ${index === 0 ? 'bg-green-50 border-l-4 border-green-500' : ''}`}>
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${index === 0 ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{index + 1}</div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-medium text-gray-900">{teacher.name}</span>
+                              {index === 0 && <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">NEXT UP</span>}
                             </div>
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium text-gray-900">{teacher.name}</span>
-                                {index === 0 && (
-                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                    NEXT UP
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {teacher.daysSinceLast > 0 
-                                  ? `${teacher.daysSinceLast} days since last coverage` 
-                                  : 'No recent coverage'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-4">
-                            <div className="text-right">
-                              <p className="text-sm font-medium text-gray-900">{teacher.hoursThisMonth}h this month</p>
-                              <p className="text-sm text-gray-500">${teacher.amountThisMonth.toFixed(0)} earned</p>
-                            </div>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              teacher.status === 'free' 
-                                ? 'bg-green-100 text-green-700' 
-                                : teacher.status === 'covering' 
-                                ? 'bg-blue-100 text-blue-700' 
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                              {teacher.status === 'free' ? 'Available' : teacher.status === 'covering' ? 'Covering' : 'Absent'}
-                            </span>
+                            <div className="text-sm text-gray-500">{teacher.daysSinceLast > 0 ? `${teacher.daysSinceLast} days since last coverage` : 'No recent coverage'}</div>
                           </div>
                         </div>
-                      ))
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-gray-900">{teacher.hoursThisMonth}h this month</p>
+                            <p className="text-sm text-gray-500">${teacher.amountThisMonth.toFixed(0)} earned</p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${teacher.status === 'free' ? 'bg-green-100 text-green-700' : teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
+                            {teacher.status === 'free' ? 'Available' : teacher.status === 'covering' ? 'Covering' : 'Absent'}
+                          </span>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
@@ -2401,7 +2005,6 @@ function DepartmentRotationSection({
           </div>
         )}
 
-        {/* Assignment History Tab */}
         {activeTab === 'history' && (
           <div>
             {historyLoading ? (
@@ -2432,13 +2035,7 @@ function DepartmentRotationSection({
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{entry.duration}h</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-green-600">${entry.amount.toFixed(2)}</td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            entry.status === 'paid' 
-                              ? 'bg-green-100 text-green-700' 
-                              : entry.status === 'verified' 
-                              ? 'bg-blue-100 text-blue-700' 
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${entry.status === 'paid' ? 'bg-green-100 text-green-700' : entry.status === 'verified' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'}`}>
                             {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
                           </span>
                         </td>
@@ -2451,64 +2048,44 @@ function DepartmentRotationSection({
           </div>
         )}
 
-        {/* Teacher Stats Tab */}
         {activeTab === 'stats' && (
           <div>
             {teacherStats.length === 0 ? (
               <div className="py-12 text-center text-gray-500">No teacher statistics available</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teacherStats
-                  .sort((a, b) => b.total_hours - a.total_hours)
-                  .map((stat, index) => (
-                    <div
-                      key={stat.teacher_id}
-                      className={`p-4 rounded-lg border ${
-                        index === 0 
-                          ? 'border-yellow-300 bg-yellow-50' 
-                          : 'border-gray-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                            index === 0 
-                              ? 'bg-yellow-400 text-yellow-900' 
-                              : index === 1 
-                              ? 'bg-gray-300 text-gray-700' 
-                              : index === 2 
-                              ? 'bg-orange-300 text-orange-800'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {index === 0 ? '🏆' : index + 1}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{stat.teacher_name}</p>
-                            <p className="text-xs text-gray-500">ID: {stat.teacher_id}</p>
-                          </div>
+                {teacherStats.sort((a, b) => b.total_hours - a.total_hours).map((stat, index) => (
+                  <div key={stat.teacher_id} className={`p-4 rounded-lg border ${index === 0 ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${index === 0 ? 'bg-yellow-400 text-yellow-900' : index === 1 ? 'bg-gray-300 text-gray-700' : index === 2 ? 'bg-orange-300 text-orange-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {index === 0 ? '🏆' : index + 1}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-gray-900">{stat.teacher_name}</p>
+                          <p className="text-xs text-gray-500">ID: {stat.teacher_id}</p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="bg-gray-50 rounded p-2">
-                          <p className="text-lg font-bold text-gray-900">{stat.total_assignments}</p>
-                          <p className="text-xs text-gray-500">Assignments</p>
-                        </div>
-                        <div className="bg-gray-50 rounded p-2">
-                          <p className="text-lg font-bold text-gray-900">{stat.total_hours.toFixed(1)}h</p>
-                          <p className="text-xs text-gray-500">Hours</p>
-                        </div>
-                        <div className="bg-green-50 rounded p-2">
-                          <p className="text-lg font-bold text-green-600">${stat.total_amount.toFixed(0)}</p>
-                          <p className="text-xs text-gray-500">Earned</p>
-                        </div>
-                      </div>
-                      {stat.last_assignment && (
-                        <p className="mt-3 text-xs text-gray-500 text-center">
-                          Last assignment: {new Date(stat.last_assignment).toLocaleDateString()}
-                        </p>
-                      )}
                     </div>
-                  ))}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-lg font-bold text-gray-900">{stat.total_assignments}</p>
+                        <p className="text-xs text-gray-500">Assignments</p>
+                      </div>
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-lg font-bold text-gray-900">{stat.total_hours.toFixed(1)}h</p>
+                        <p className="text-xs text-gray-500">Hours</p>
+                      </div>
+                      <div className="bg-green-50 rounded p-2">
+                        <p className="text-lg font-bold text-green-600">${stat.total_amount.toFixed(0)}</p>
+                        <p className="text-xs text-gray-500">Earned</p>
+                      </div>
+                    </div>
+                    {stat.last_assignment && (
+                      <p className="mt-3 text-xs text-gray-500 text-center">Last assignment: {new Date(stat.last_assignment).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -2534,7 +2111,6 @@ function AvailableTeachersModal({ teachers, onClose }: AvailableTeachersModalPro
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">Available Teachers</h2>
@@ -2547,68 +2123,34 @@ function AvailableTeachersModal({ teachers, onClose }: AvailableTeachersModalPro
           </button>
         </div>
 
-        {/* Filter Tabs */}
         <div className="px-6 py-3 border-b border-gray-200 flex space-x-2">
           {(['all', 'free', 'covering', 'absent'] as const).map(status => (
-            <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === status
-                  ? 'bg-green-100 text-green-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
+            <button key={status} onClick={() => setFilter(status)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${filter === status ? 'bg-green-100 text-green-700' : 'text-gray-600 hover:bg-gray-100'}`}>
               {status === 'all' ? 'All' : status === 'free' ? 'Available' : status === 'covering' ? 'Covering' : 'Absent'}
               <span className="ml-1 text-xs">({status === 'all' ? teachers.length : teachers.filter(t => t.status === status).length})</span>
             </button>
           ))}
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredTeachers.map(teacher => (
-              <button
-                key={teacher.id}
-                onClick={() => setSelectedTeacher(selectedTeacher?.id === teacher.id ? null : teacher)}
-                className={`text-left p-4 rounded-lg border transition-all ${
-                  selectedTeacher?.id === teacher.id
-                    ? 'border-green-500 bg-green-50 ring-2 ring-green-500'
-                    : 'border-gray-200 hover:border-green-300 hover:shadow-md'
-                }`}
-              >
+              <button key={teacher.id} onClick={() => setSelectedTeacher(selectedTeacher?.id === teacher.id ? null : teacher)} className={`text-left p-4 rounded-lg border transition-all ${selectedTeacher?.id === teacher.id ? 'border-green-500 bg-green-50 ring-2 ring-green-500' : 'border-gray-200 hover:border-green-300 hover:shadow-md'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold text-gray-900">{teacher.name}</h3>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    teacher.status === 'free' ? 'bg-green-100 text-green-700' :
-                    teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${teacher.status === 'free' ? 'bg-green-100 text-green-700' : teacher.status === 'covering' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>
                     {teacher.status === 'free' ? 'Available' : teacher.status === 'covering' ? 'Covering' : 'Absent'}
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 mb-2">{teacher.department}</p>
                 
                 {selectedTeacher?.id === teacher.id && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2 animate-fadeIn">
+                  <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Position:</span>
-                        <span className="ml-2 font-medium">{teacher.position || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Days Since Last:</span>
-                        <span className="ml-2 font-medium">{teacher.daysSinceLast}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Hours This Month:</span>
-                        <span className="ml-2 font-medium">{teacher.hoursThisMonth}h</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Earned This Month:</span>
-                        <span className="ml-2 font-medium text-green-600">${teacher.amountThisMonth}</span>
-                      </div>
+                      <div><span className="text-gray-500">Position:</span><span className="ml-2 font-medium">{teacher.position || 'N/A'}</span></div>
+                      <div><span className="text-gray-500">Days Since Last:</span><span className="ml-2 font-medium">{teacher.daysSinceLast}</span></div>
+                      <div><span className="text-gray-500">Hours This Month:</span><span className="ml-2 font-medium">{teacher.hoursThisMonth}h</span></div>
+                      <div><span className="text-gray-500">Earned This Month:</span><span className="ml-2 font-medium text-green-600">${teacher.amountThisMonth}</span></div>
                     </div>
                   </div>
                 )}
@@ -2617,11 +2159,8 @@ function AvailableTeachersModal({ teachers, onClose }: AvailableTeachersModalPro
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
@@ -2640,7 +2179,6 @@ function AvailableSubstitutesModal({ teachers, onClose }: AvailableSubstitutesMo
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">Available Substitutes</h2>
@@ -2653,7 +2191,6 @@ function AvailableSubstitutesModal({ teachers, onClose }: AvailableSubstitutesMo
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {teachers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
@@ -2665,15 +2202,7 @@ function AvailableSubstitutesModal({ teachers, onClose }: AvailableSubstitutesMo
           ) : (
             <div className="space-y-3">
               {teachers.map(sub => (
-                <button
-                  key={sub.id}
-                  onClick={() => setSelectedSub(selectedSub?.id === sub.id ? null : sub)}
-                  className={`w-full text-left p-4 rounded-lg border transition-all ${
-                    selectedSub?.id === sub.id
-                      ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500'
-                      : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
-                  }`}
-                >
+                <button key={sub.id} onClick={() => setSelectedSub(selectedSub?.id === sub.id ? null : sub)} className={`w-full text-left p-4 rounded-lg border transition-all ${selectedSub?.id === sub.id ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500' : 'border-gray-200 hover:border-blue-300 hover:shadow-md'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -2712,11 +2241,8 @@ function AvailableSubstitutesModal({ teachers, onClose }: AvailableSubstitutesMo
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
@@ -2782,20 +2308,13 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl w-full max-w-5xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-white">Substitute Applicants</h2>
-            <p className="text-orange-100 text-sm">
-              {counts.pending} pending • {counts.approved} approved • {counts.denied} denied
-            </p>
+            <p className="text-orange-100 text-sm">{counts.pending} pending • {counts.approved} approved • {counts.denied} denied</p>
           </div>
           <div className="flex items-center space-x-2">
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="px-3 py-1.5 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors text-sm"
-            >
+            <button onClick={onRefresh} disabled={loading} className="px-3 py-1.5 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors text-sm">
               {loading ? 'Loading...' : 'Refresh'}
             </button>
             <button onClick={onClose} className="text-white/80 hover:text-white">
@@ -2806,30 +2325,15 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
           </div>
         </div>
 
-        {/* Filter Tabs */}
         <div className="px-6 py-3 border-b border-gray-200 flex space-x-2">
           {(['pending', 'approved', 'denied', 'all'] as const).map(status => (
-            <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === status
-                  ? status === 'pending' ? 'bg-orange-100 text-orange-700' :
-                    status === 'approved' ? 'bg-green-100 text-green-700' :
-                    status === 'denied' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
+            <button key={status} onClick={() => setFilter(status)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${filter === status ? status === 'pending' ? 'bg-orange-100 text-orange-700' : status === 'approved' ? 'bg-green-100 text-green-700' : status === 'denied' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}>
               {status.charAt(0).toUpperCase() + status.slice(1)}
-              <span className="ml-1 text-xs">
-                ({status === 'all' ? counts.total : counts[status as keyof typeof counts]})
-              </span>
+              <span className="ml-1 text-xs">({status === 'all' ? counts.total : counts[status as keyof typeof counts]})</span>
             </button>
           ))}
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {loading ? (
             <div className="text-center py-12 text-gray-500">Loading applicants...</div>
@@ -2841,28 +2345,10 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
           ) : (
             <div className="space-y-4">
               {filteredApplicants.map(applicant => (
-                <div
-                  key={applicant.id}
-                  className={`border rounded-lg overflow-hidden transition-all ${
-                    selectedApplicant?.id === applicant.id
-                      ? 'border-orange-500 ring-2 ring-orange-500'
-                      : 'border-gray-200 hover:border-orange-300'
-                  }`}
-                >
-                  {/* Applicant Header */}
-                  <button
-                    onClick={() => {
-                      setSelectedApplicant(selectedApplicant?.id === applicant.id ? null : applicant);
-                      setReviewMode('view');
-                    }}
-                    className="w-full text-left p-4 flex items-center justify-between bg-white hover:bg-gray-50"
-                  >
+                <div key={applicant.id} className={`border rounded-lg overflow-hidden transition-all ${selectedApplicant?.id === applicant.id ? 'border-orange-500 ring-2 ring-orange-500' : 'border-gray-200 hover:border-orange-300'}`}>
+                  <button onClick={() => { setSelectedApplicant(selectedApplicant?.id === applicant.id ? null : applicant); setReviewMode('view'); }} className="w-full text-left p-4 flex items-center justify-between bg-white hover:bg-gray-50">
                     <div className="flex items-center space-x-4">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
-                        applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' :
-                        applicant.status === 'approved' ? 'bg-green-100 text-green-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' : applicant.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {applicant.first_name.charAt(0)}{applicant.last_name.charAt(0)}
                       </div>
                       <div>
@@ -2875,17 +2361,12 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
                         <p className="text-sm font-medium text-gray-900">{applicant.experience_years || 0} years exp.</p>
                         <p className="text-xs text-gray-500">Applied {applicant.applied_date}</p>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' :
-                        applicant.status === 'approved' ? 'bg-green-100 text-green-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${applicant.status === 'pending' ? 'bg-orange-100 text-orange-700' : applicant.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1)}
                       </span>
                     </div>
                   </button>
 
-                  {/* Expanded Details */}
                   {selectedApplicant?.id === applicant.id && (
                     <div className="border-t border-gray-200 bg-gray-50 p-4">
                       {reviewMode === 'view' ? (
@@ -2930,71 +2411,30 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
 
                           {applicant.status === 'pending' && (
                             <div className="flex space-x-3 mt-4">
-                              <button
-                                onClick={() => setReviewMode('approve')}
-                                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
-                              >
-                                ✓ Approve Applicant
-                              </button>
-                              <button
-                                onClick={() => setReviewMode('deny')}
-                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
-                              >
-                                ✗ Deny Applicant
-                              </button>
+                              <button onClick={() => setReviewMode('approve')} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">✓ Approve Applicant</button>
+                              <button onClick={() => setReviewMode('deny')} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium">✗ Deny Applicant</button>
                             </div>
                           )}
                         </>
                       ) : (
                         <div className="space-y-4">
-                          <h4 className="font-semibold text-gray-900">
-                            {reviewMode === 'approve' ? '✓ Approve' : '✗ Deny'} {applicant.full_name}
-                          </h4>
+                          <h4 className="font-semibold text-gray-900">{reviewMode === 'approve' ? '✓ Approve' : '✗ Deny'} {applicant.full_name}</h4>
                           
                           {reviewMode === 'deny' && (
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Denial Reason (will be sent to applicant)
-                              </label>
-                              <textarea
-                                value={denialReason}
-                                onChange={(e) => setDenialReason(e.target.value)}
-                                placeholder="Please provide a reason for denial..."
-                                rows={3}
-                                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                              />
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Denial Reason (will be sent to applicant)</label>
+                              <textarea value={denialReason} onChange={(e) => setDenialReason(e.target.value)} placeholder="Please provide a reason for denial..." rows={3} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" />
                             </div>
                           )}
                           
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Admin Notes (internal only)
-                            </label>
-                            <textarea
-                              value={adminNotes}
-                              onChange={(e) => setAdminNotes(e.target.value)}
-                              placeholder="Optional internal notes..."
-                              rows={2}
-                              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Admin Notes (internal only)</label>
+                            <textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="Optional internal notes..." rows={2} className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500" />
                           </div>
 
                           <div className="flex space-x-3">
-                            <button
-                              onClick={() => setReviewMode('view')}
-                              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleReview(reviewMode === 'approve' ? 'approve' : 'deny')}
-                              disabled={submitting || (reviewMode === 'deny' && !denialReason.trim())}
-                              className={`flex-1 px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50 ${
-                                reviewMode === 'approve'
-                                  ? 'bg-green-600 hover:bg-green-700'
-                                  : 'bg-red-600 hover:bg-red-700'
-                              }`}
-                            >
+                            <button onClick={() => setReviewMode('view')} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+                            <button onClick={() => handleReview(reviewMode === 'approve' ? 'approve' : 'deny')} disabled={submitting || (reviewMode === 'deny' && !denialReason.trim())} className={`flex-1 px-4 py-2 text-white rounded-lg font-medium disabled:opacity-50 ${reviewMode === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
                               {submitting ? 'Processing...' : reviewMode === 'approve' ? 'Confirm Approval' : 'Confirm Denial'}
                             </button>
                           </div>
@@ -3008,11 +2448,8 @@ function ApplicantsModal({ applicants, counts, loading, onClose, onRefresh, push
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
-            Close
-          </button>
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Close</button>
         </div>
       </div>
     </div>
