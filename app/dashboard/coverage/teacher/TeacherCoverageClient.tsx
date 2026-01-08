@@ -177,6 +177,17 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
   // Accept coverage states
   const [acceptedCoverage, setAcceptedCoverage] = useState<Set<number>>(new Set());
   
+  // Withdraw modal states
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawCoverageId, setWithdrawCoverageId] = useState<number | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  
+  // Detail view modal states
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailCoverage, setDetailCoverage] = useState<CoverageOpening | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  
   const initialLoadComplete = useRef(false);
   const upcomingDates = useMemo(() => getUpcomingWeekdays(10), []);
 
@@ -416,6 +427,69 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
     } catch {
       pushToast('Failed to accept coverage.', 'error');
     }
+  }
+
+  // Withdraw from coverage
+  async function handleWithdrawCoverage() {
+    if (!withdrawCoverageId || !withdrawReason.trim()) {
+      pushToast('Please provide a reason for withdrawal', 'error');
+      return;
+    }
+    setWithdrawSubmitting(true);
+    try {
+      const response = await fetch(`${XANO_TEACHER_API}/teachers/withdraw-coverage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coverage_id: withdrawCoverageId,
+          teacher_id: teacherData.employeeId,
+          reason: withdrawReason,
+        }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        pushToast('Successfully withdrawn from coverage.', 'success');
+        setShowWithdrawModal(false);
+        setWithdrawCoverageId(null);
+        setWithdrawReason('');
+        fetchCoverageLog();
+        fetchAvailableCoverage();
+      } else {
+        pushToast(result.message || 'Failed to withdraw from coverage', 'error');
+      }
+    } catch {
+      pushToast('Failed to withdraw from coverage.', 'error');
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  }
+
+  // View coverage details
+  async function handleViewDetails(coverageId: number) {
+    setDetailLoading(true);
+    setShowDetailModal(true);
+    try {
+      const response = await fetch(`${XANO_TEACHER_API}/coverage/full-details?coverage_request_id=${coverageId}`);
+      const result = await response.json();
+      if (result.success && result.coverage) {
+        setDetailCoverage(result.coverage);
+      } else {
+        pushToast('Failed to load coverage details', 'error');
+        setShowDetailModal(false);
+      }
+    } catch {
+      pushToast('Failed to load coverage details', 'error');
+      setShowDetailModal(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  // Open withdraw modal
+  function openWithdrawModal(coverageId: number) {
+    setWithdrawCoverageId(coverageId);
+    setWithdrawReason('');
+    setShowWithdrawModal(true);
   }
 
   // W-2 Export
@@ -888,31 +962,81 @@ This document is for tax preparation purposes.`;
           {/* Coverage Log */}
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="px-5 py-4 border-b">
-              <h2 className="text-lg font-semibold text-gray-900">My Coverage History</h2>
+              <h2 className="text-lg font-semibold text-gray-900">My Accepted Coverage</h2>
+              <p className="text-sm text-gray-500">Coverage you've picked up from other teachers</p>
             </div>
             <div className="p-5">
               {coverageLog.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-4">No coverage history yet.</p>
+                <p className="text-gray-500 text-sm text-center py-4">No accepted coverage yet. Browse the available openings above!</p>
               ) : (
                 <div className="space-y-3">
-                  {coverageLog.slice(0, 5).map((log) => (
-                    <div key={log.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <div className="font-medium text-gray-900">{log.class_name || 'Coverage'}</div>
-                        <div className="text-sm text-gray-600">{formatDate(log.date)} • {log.duration}h</div>
+                  {coverageLog.slice(0, 5).map((log) => {
+                    // Determine if this is a future job (can withdraw) vs past job
+                    const jobDate = new Date(log.date);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const isFutureJob = jobDate >= today;
+                    const isScheduled = log.status === 'pending' && isFutureJob;
+                    
+                    return (
+                      <div key={log.id} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{log.class_name || 'Coverage'}</span>
+                              {isScheduled && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                  📅 Scheduled
+                                </span>
+                              )}
+                              {!isFutureJob && log.status === 'pending' && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                                  ⏳ Pending Verification
+                                </span>
+                              )}
+                              {log.status === 'verified' && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                  ✓ Verified
+                                </span>
+                              )}
+                              {log.status === 'paid' && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                                  💰 Paid
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              {formatDate(log.date)} • {log.duration}h • ${(log.amount || 0).toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(log.coverage_request_id)}
+                              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                            >
+                              View Details
+                            </button>
+                            {isScheduled && (
+                              <button
+                                onClick={() => openWithdrawModal(log.coverage_request_id)}
+                                className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-red-200"
+                              >
+                                Withdraw
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-medium text-gray-900">${(log.amount || 0).toFixed(2)}</div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          log.status === 'paid' ? 'bg-green-100 text-green-700' :
-                          log.status === 'verified' ? 'bg-blue-100 text-blue-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {log.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {coverageLog.length > 5 && (
+                    <button
+                      onClick={() => setShowCoverageLogModal(true)}
+                      className="w-full text-center text-sm text-purple-600 hover:text-purple-700 py-2"
+                    >
+                      View all {coverageLog.length} coverage records →
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -1435,6 +1559,150 @@ This document is for tax preparation purposes.`;
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Modal */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b flex justify-between items-center bg-red-50">
+              <h2 className="font-semibold text-red-900">⚠️ Withdraw from Coverage</h2>
+              <button 
+                onClick={() => {
+                  setShowWithdrawModal(false);
+                  setWithdrawCoverageId(null);
+                  setWithdrawReason('');
+                }} 
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5">
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to withdraw from this coverage assignment? This action will return the job to the available pool.
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Withdrawal *</label>
+                <select
+                  value={withdrawReason}
+                  onChange={(e) => setWithdrawReason(e.target.value)}
+                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Schedule conflict">Schedule conflict</option>
+                  <option value="Personal emergency">Personal emergency</option>
+                  <option value="Health issue">Health issue</option>
+                  <option value="Transportation issue">Transportation issue</option>
+                  <option value="Accepted in error">Accepted in error</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowWithdrawModal(false);
+                    setWithdrawCoverageId(null);
+                    setWithdrawReason('');
+                  }}
+                  className="flex-1 px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleWithdrawCoverage}
+                  disabled={withdrawSubmitting || !withdrawReason}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300"
+                >
+                  {withdrawSubmitting ? 'Withdrawing...' : 'Confirm Withdrawal'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Coverage Detail Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="font-semibold text-gray-900">📋 Coverage Details</h2>
+              <button 
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setDetailCoverage(null);
+                }} 
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5">
+              {detailLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                  <p className="text-gray-500">Loading details...</p>
+                </div>
+              ) : detailCoverage ? (
+                <div className="space-y-4">
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-purple-900 text-lg">{detailCoverage.class_name}</h3>
+                    <p className="text-purple-700">Covering for {detailCoverage.teacher_name}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Date</div>
+                      <div className="font-medium">{formatDate(detailCoverage.date)}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Room</div>
+                      <div className="font-medium">{detailCoverage.room}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Subject</div>
+                      <div className="font-medium">{detailCoverage.subject}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Grade</div>
+                      <div className="font-medium">{detailCoverage.grade}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Students</div>
+                      <div className="font-medium">{detailCoverage.students}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Department</div>
+                      <div className="font-medium">{detailCoverage.department}</div>
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50 rounded-lg p-4 flex justify-between items-center">
+                    <span className="text-green-700 font-medium">Compensation</span>
+                    <span className="text-2xl font-bold text-green-600">${detailCoverage.pay_amount.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-600">Status</span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      detailCoverage.status === 'covered' ? 'bg-blue-100 text-blue-700' :
+                      detailCoverage.status === 'completed' ? 'bg-green-100 text-green-700' :
+                      detailCoverage.status === 'uncovered' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {detailCoverage.status === 'covered' ? '📅 Scheduled' : 
+                       detailCoverage.status === 'completed' ? '✓ Completed' :
+                       detailCoverage.status}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">No details available</p>
               )}
             </div>
           </div>
