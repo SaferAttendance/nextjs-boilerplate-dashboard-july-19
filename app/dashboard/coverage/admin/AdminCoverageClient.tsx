@@ -1547,7 +1547,7 @@ function DailyScheduleModal({
                       </div>
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => onViewDetails(cls.id)}
+                          onClick={() => onViewDetails(Number(cls.id))}
                           className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg"
                         >
                           Details
