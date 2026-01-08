@@ -376,15 +376,15 @@ export default async function TeacherCoveragePage() {
             period: idx + 1,
             name: tc.class_name || 'Class',
             room: tc.room || '',
-            substituteId: tc.substitute_id,
-            substituteName: tc.substitute_name,
+            substituteId: tc.substitute_id || undefined,
+            substituteName: tc.substitute_name || undefined,
           }))
         : todaysCoverage.map((tc, idx) => ({
             period: idx + 1,
             name: tc.class_name || 'Class',
             room: tc.room || '',
-            substituteId: tc.substitute_id,
-            substituteName: tc.substitute_name,
+            substituteId: tc.substitute_id || undefined,
+            substituteName: tc.substitute_name || undefined,
           })),
     } : null,
     
