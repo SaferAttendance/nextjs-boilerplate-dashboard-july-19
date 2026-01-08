@@ -51,6 +51,7 @@ type Job = {
 
 type Assignment = {
   id: number;
+  coverage_request_id?: number;
   date: string;
   school: string;
   school_name: string;
@@ -62,7 +63,10 @@ type Assignment = {
   displayStatus: 'upcoming' | 'completed' | 'current';
   teacher_name?: string;
   department?: string;
-  status?: string;
+  status?: 'pending' | 'verified' | 'paid';
+  subject?: string;
+  grade?: string;
+  students?: number;
 };
 
 type Earnings = {
@@ -96,7 +100,30 @@ type School = {
   admin_phone: string;
 };
 
+type CoverageDetail = {
+  id: number;
+  class_name: string;
+  teacher_name: string;
+  teacher_id: string;
+  date: string;
+  room: string;
+  subject: string;
+  grade: string;
+  students: number;
+  department: string;
+  pay_amount: number;
+  status: string;
+  substitute_id: string | null;
+  substitute_name: string | null;
+  school_code: string;
+  start_time?: number;
+  end_time?: number;
+  notes?: string;
+  lesson_plan_url?: string;
+};
+
 const XANO_BASE = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2';
+const XANO_TEACHER_API = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:t_J13ik1';
 
 const CALL_OUT_REASONS = [
   { id: 'illness', label: 'Personal Illness', icon: '🤒' },
@@ -105,6 +132,15 @@ const CALL_OUT_REASONS = [
   { id: 'weather', label: 'Weather Conditions', icon: '🌧️' },
   { id: 'schedule_conflict', label: 'Schedule Conflict', icon: '📅' },
   { id: 'other', label: 'Other', icon: '📝' },
+];
+
+const WITHDRAW_REASONS = [
+  { id: 'schedule_conflict', label: 'Schedule Conflict' },
+  { id: 'personal_emergency', label: 'Personal Emergency' },
+  { id: 'health_issue', label: 'Health Issue' },
+  { id: 'transportation', label: 'Transportation Issue' },
+  { id: 'accepted_error', label: 'Accepted in Error' },
+  { id: 'other', label: 'Other' },
 ];
 
 export default function SubCoverageClient({ subData }: { subData: SubData }) {
@@ -154,6 +190,17 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
   const [applyNotes, setApplyNotes] = useState('');
   const [applySubmitting, setApplySubmitting] = useState(false);
   
+  // NEW: Withdraw modal states
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawJob, setWithdrawJob] = useState<Assignment | null>(null);
+  const [withdrawReason, setWithdrawReason] = useState('');
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  
+  // NEW: Detail view modal states
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailJob, setDetailJob] = useState<CoverageDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  
   // Stat card modals
   const [showCompletedModal, setShowCompletedModal] = useState(false);
   const [showAvailableModal, setShowAvailableModal] = useState(false);
@@ -195,7 +242,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     return myDistricts.approved.map(d => d.district_code).join(',');
   }, [myDistricts.approved]);
 
-  // Fetch functions - NOT wrapped in useCallback to avoid dependency issues
+  // Fetch functions
   async function fetchDistricts() {
     try {
       const response = await fetch(`${XANO_BASE}/districts/list?state=%20`);
@@ -355,11 +402,10 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array = run once on mount
+  }, []);
 
   // Re-fetch jobs when approved districts change (but NOT on initial load)
   useEffect(() => {
-    // Only run if initial load is complete AND the codes actually changed
     if (initialLoadComplete.current && 
         approvedDistrictCodesStr && 
         approvedDistrictCodesStr !== prevApprovedCodesRef.current) {
@@ -400,7 +446,7 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
     }
   }
 
-  // Call out handler
+  // Call out handler (emergency - same day or very short notice)
   async function handleCallOut() {
     if (!callOutJob || !callOutReason) return;
     setCallOutSubmitting(true);
@@ -431,6 +477,61 @@ export default function SubCoverageClient({ subData }: { subData: SubData }) {
       pushToast('Failed to submit call out.', 'error');
     } finally {
       setCallOutSubmitting(false);
+    }
+  }
+
+  // NEW: Withdraw handler (advance notice cancellation)
+  async function handleWithdraw() {
+    if (!withdrawJob || !withdrawReason) return;
+    setWithdrawSubmitting(true);
+    try {
+      const jobId = withdrawJob.coverage_request_id || withdrawJob.id;
+      const response = await fetch(`${XANO_TEACHER_API}/substitutes/withdraw-job`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: jobId,
+          substitute_id: subData.employeeId,
+          reason: WITHDRAW_REASONS.find(r => r.id === withdrawReason)?.label || withdrawReason,
+        }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        pushToast('Successfully withdrawn from job. It\'s now available for others.', 'success');
+        setShowWithdrawModal(false);
+        setWithdrawJob(null);
+        setWithdrawReason('');
+        fetchAssignments();
+        fetchJobs();
+        fetchEarnings();
+      } else {
+        pushToast(result.message || 'Failed to withdraw from job', 'error');
+      }
+    } catch {
+      pushToast('Failed to withdraw from job.', 'error');
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  }
+
+  // NEW: View job details
+  async function handleViewDetails(jobId: number) {
+    setDetailLoading(true);
+    setShowDetailModal(true);
+    try {
+      const response = await fetch(`${XANO_TEACHER_API}/coverage/full-details?coverage_request_id=${jobId}`);
+      const result = await response.json();
+      if (result.success && result.coverage) {
+        setDetailJob(result.coverage);
+      } else {
+        pushToast('Failed to load job details', 'error');
+        setShowDetailModal(false);
+      }
+    } catch {
+      pushToast('Failed to load job details', 'error');
+      setShowDetailModal(false);
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -523,7 +624,44 @@ This document is for tax preparation purposes.`;
     if (typeof dateStr === 'number') {
       return new Date(dateStr).toLocaleDateString();
     }
-    return dateStr;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  // Helper to determine if a job can be withdrawn (future date, not same day)
+  function canWithdraw(assignment: Assignment): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const jobDate = new Date(assignment.date);
+    jobDate.setHours(0, 0, 0, 0);
+    return jobDate > today;
+  }
+
+  // Helper to get status badge for assignments
+  function getStatusBadge(assignment: Assignment) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const jobDate = new Date(assignment.date);
+    jobDate.setHours(0, 0, 0, 0);
+    const isFutureJob = jobDate >= today;
+    
+    // Check payment/verification status
+    if (assignment.status === 'paid') {
+      return { label: '💰 Paid', className: 'bg-green-100 text-green-700' };
+    }
+    if (assignment.status === 'verified') {
+      return { label: '✓ Verified', className: 'bg-blue-100 text-blue-700' };
+    }
+    if (!isFutureJob && assignment.displayStatus === 'completed') {
+      return { label: '⏳ Pending Verification', className: 'bg-yellow-100 text-yellow-700' };
+    }
+    if (isFutureJob) {
+      return { label: '📅 Scheduled', className: 'bg-blue-100 text-blue-700' };
+    }
+    if (assignment.displayStatus === 'current') {
+      return { label: '▶ In Progress', className: 'bg-green-100 text-green-700' };
+    }
+    return { label: assignment.displayStatus, className: 'bg-gray-100 text-gray-700' };
   }
 
   // Filter jobs
@@ -822,47 +960,99 @@ This document is for tax preparation purposes.`;
             </div>
           )}
 
-          {/* My Assignments */}
+          {/* My Assignments - ENHANCED with smart status and withdraw */}
           <div className="bg-white rounded-xl shadow-sm border">
             <div className="px-5 py-4 border-b">
               <h2 className="text-lg font-semibold text-gray-900">My Assignments</h2>
+              <p className="text-sm text-gray-500">Your accepted coverage jobs</p>
             </div>
             <div className="p-5 space-y-4">
               {myAssignments.upcoming.length === 0 && myAssignments.current.length === 0 ? (
                 <p className="text-gray-500 text-sm">No assignments. Accept some jobs above!</p>
               ) : (
                 <>
-                  {myAssignments.current.map((a) => (
-                    <div key={a.id} className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
-                      <div>
-                        <div className="font-medium text-gray-900">{a.class_name}</div>
-                        <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
-                      </div>
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">In Progress</span>
-                    </div>
-                  ))}
-                  {myAssignments.upcoming.map((a) => (
-                    <div key={a.id} className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div>
-                        <div className="font-medium text-gray-900">{a.class_name}</div>
-                        <div className="text-xs text-gray-600">
-                          {a.date} • {a.school_name || a.school} • Room {a.room}
+                  {/* Current/In Progress */}
+                  {myAssignments.current.map((a) => {
+                    const badge = getStatusBadge(a);
+                    return (
+                      <div key={a.id} className="p-4 bg-green-50 rounded-lg border border-green-200">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900">{a.class_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {formatTime(a.start_time)} - {formatTime(a.end_time)} • ${(a.pay || 0).toFixed(2)}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleViewDetails(a.coverage_request_id || a.id)}
+                            className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1"
+                          >
+                            View Details
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-medium">${(a.pay || 0).toFixed(2)}</span>
-                        <button
-                          onClick={() => {
-                            setCallOutJob(a);
-                            setShowCallOutModal(true);
-                          }}
-                          className="text-xs text-red-600 hover:text-red-700 px-2 py-1 border border-red-200 rounded"
-                        >
-                          Call Out
-                        </button>
+                    );
+                  })}
+                  
+                  {/* Upcoming */}
+                  {myAssignments.upcoming.map((a) => {
+                    const badge = getStatusBadge(a);
+                    const canWithdrawJob = canWithdraw(a);
+                    
+                    return (
+                      <div key={a.id} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900">{a.class_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div className="text-sm text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {formatDate(a.date)} • {formatTime(a.start_time)} - {formatTime(a.end_time)} • ${(a.pay || 0).toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(a.coverage_request_id || a.id)}
+                              className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1"
+                            >
+                              View Details
+                            </button>
+                            {canWithdrawJob ? (
+                              <button
+                                onClick={() => {
+                                  setWithdrawJob(a);
+                                  setShowWithdrawModal(true);
+                                }}
+                                className="text-xs text-red-600 hover:text-red-700 px-2 py-1 border border-red-200 rounded hover:bg-red-50"
+                              >
+                                Withdraw
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setCallOutJob(a);
+                                  setShowCallOutModal(true);
+                                }}
+                                className="text-xs text-orange-600 hover:text-orange-700 px-2 py-1 border border-orange-200 rounded hover:bg-orange-50"
+                              >
+                                Call Out
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </div>
@@ -894,7 +1084,7 @@ This document is for tax preparation purposes.`;
           </div>
         </>
       ) : (
-        /* Districts Tab */
+        /* Districts Tab - UNCHANGED */
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">My Districts</h1>
@@ -1029,13 +1219,14 @@ This document is for tax preparation purposes.`;
         </div>
       )}
 
-      {/* Call Out Modal */}
+      {/* Call Out Modal (Emergency - same day) */}
       {showCallOutModal && callOutJob && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl w-full max-w-lg mx-4">
-            <div className="bg-red-50 px-5 py-4 border-b border-red-200">
-              <h2 className="font-semibold text-gray-900">Call Out from Assignment</h2>
-              <p className="text-sm text-gray-600">{callOutJob.class_name} on {callOutJob.date}</p>
+            <div className="bg-orange-50 px-5 py-4 border-b border-orange-200">
+              <h2 className="font-semibold text-gray-900">🚨 Emergency Call Out</h2>
+              <p className="text-sm text-gray-600">{callOutJob.class_name} on {formatDate(callOutJob.date)}</p>
+              <p className="text-xs text-orange-600 mt-1">Use this for same-day or urgent cancellations</p>
             </div>
             <div className="p-5 space-y-4">
               <div>
@@ -1047,7 +1238,7 @@ This document is for tax preparation purposes.`;
                       onClick={() => setCallOutReason(r.id)}
                       className={`p-2 rounded-lg border text-left text-sm ${
                         callOutReason === r.id
-                          ? 'border-red-500 bg-red-50 ring-2 ring-red-500'
+                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500'
                           : 'border-gray-200'
                       }`}
                     >
@@ -1082,10 +1273,160 @@ This document is for tax preparation purposes.`;
               <button
                 onClick={handleCallOut}
                 disabled={!callOutReason || callOutSubmitting}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {callOutSubmitting ? 'Submitting...' : 'Confirm Call Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Withdraw Modal (Advance notice cancellation) */}
+      {showWithdrawModal && withdrawJob && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-md mx-4">
+            <div className="bg-red-50 px-5 py-4 border-b border-red-200">
+              <h2 className="font-semibold text-gray-900">⚠️ Withdraw from Job</h2>
+              <p className="text-sm text-gray-600">{withdrawJob.class_name} on {formatDate(withdrawJob.date)}</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                Are you sure you want to withdraw from this job? It will be returned to the available pool for others to accept.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Withdrawal *</label>
+                <select
+                  value={withdrawReason}
+                  onChange={(e) => setWithdrawReason(e.target.value)}
+                  className="w-full p-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">Select a reason...</option>
+                  {WITHDRAW_REASONS.map(r => (
+                    <option key={r.id} value={r.id}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setShowWithdrawModal(false);
+                  setWithdrawJob(null);
+                  setWithdrawReason('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleWithdraw}
+                disabled={!withdrawReason || withdrawSubmitting}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm font-medium"
               >
-                {callOutSubmitting ? 'Submitting...' : 'Confirm'}
+                {withdrawSubmitting ? 'Withdrawing...' : 'Confirm Withdrawal'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Job Detail Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b flex justify-between items-center">
+              <h2 className="font-semibold text-gray-900">📋 Job Details</h2>
+              <button 
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setDetailJob(null);
+                }} 
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5">
+              {detailLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                  <p className="text-gray-500">Loading details...</p>
+                </div>
+              ) : detailJob ? (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-blue-900 text-lg">{detailJob.class_name}</h3>
+                    <p className="text-blue-700">Covering for {detailJob.teacher_name}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Date</div>
+                      <div className="font-medium">{formatDate(detailJob.date)}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Room</div>
+                      <div className="font-medium">{detailJob.room}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Subject</div>
+                      <div className="font-medium">{detailJob.subject}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Grade</div>
+                      <div className="font-medium">{detailJob.grade}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Students</div>
+                      <div className="font-medium">{detailJob.students}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-gray-500 text-xs uppercase mb-1">Department</div>
+                      <div className="font-medium">{detailJob.department}</div>
+                    </div>
+                  </div>
+
+                  {detailJob.notes && (
+                    <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
+                      <div className="text-yellow-700 text-xs uppercase mb-1 font-medium">📝 Notes</div>
+                      <div className="text-sm text-gray-700">{detailJob.notes}</div>
+                    </div>
+                  )}
+
+                  {detailJob.lesson_plan_url && (
+                    <a 
+                      href={detailJob.lesson_plan_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block bg-purple-50 rounded-lg p-3 border border-purple-200 hover:bg-purple-100"
+                    >
+                      <div className="text-purple-700 font-medium text-sm">📄 View Lesson Plan →</div>
+                    </a>
+                  )}
+
+                  <div className="bg-green-50 rounded-lg p-4 flex justify-between items-center">
+                    <span className="text-green-700 font-medium">Compensation</span>
+                    <span className="text-2xl font-bold text-green-600">${detailJob.pay_amount.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-600">Status</span>
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      detailJob.status === 'covered' ? 'bg-blue-100 text-blue-700' :
+                      detailJob.status === 'completed' ? 'bg-green-100 text-green-700' :
+                      detailJob.status === 'uncovered' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {detailJob.status === 'covered' ? '📅 Scheduled' : 
+                       detailJob.status === 'completed' ? '✓ Completed' :
+                       detailJob.status}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 py-8">No details available</p>
+              )}
             </div>
           </div>
         </div>
@@ -1152,18 +1493,37 @@ This document is for tax preparation purposes.`;
                 <p className="text-gray-500 text-sm text-center py-8">No completed jobs yet.</p>
               ) : (
                 <div className="space-y-3">
-                  {myAssignments.completed.map((a) => (
-                    <div key={a.id} className="p-3 bg-gray-50 rounded-lg border">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium text-gray-900">{a.class_name}</div>
-                          <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
-                          <div className="text-xs text-gray-500 mt-1">{a.date}</div>
+                  {myAssignments.completed.map((a) => {
+                    const badge = getStatusBadge(a);
+                    return (
+                      <div key={a.id} className="p-3 bg-gray-50 rounded-lg border">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{a.class_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                            <div className="text-xs text-gray-500 mt-1">{formatDate(a.date)}</div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-medium text-green-600">${(a.pay || 0).toFixed(2)}</span>
+                            <button
+                              onClick={() => {
+                                handleViewDetails(a.coverage_request_id || a.id);
+                                setShowCompletedModal(false);
+                              }}
+                              className="block text-xs text-blue-600 hover:text-blue-700 mt-1"
+                            >
+                              View Details
+                            </button>
+                          </div>
                         </div>
-                        <span className="text-sm font-medium text-green-600">${(a.pay || 0).toFixed(2)}</span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1253,30 +1613,64 @@ This document is for tax preparation purposes.`;
                 <p className="text-gray-500 text-sm text-center py-8">No upcoming assignments. Accept some jobs!</p>
               ) : (
                 <div className="space-y-3">
-                  {myAssignments.upcoming.map((a) => (
-                    <div key={a.id} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium text-gray-900">{a.class_name}</div>
-                          <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
-                          <div className="text-xs text-gray-500 mt-1">{a.date} • {formatTime(a.start_time)} - {formatTime(a.end_time)}</div>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-sm font-medium text-blue-600">${(a.pay || 0).toFixed(2)}</span>
-                          <button
-                            onClick={() => {
-                              setCallOutJob(a);
-                              setShowCallOutModal(true);
-                              setShowUpcomingModal(false);
-                            }}
-                            className="block text-xs text-red-600 hover:text-red-700 mt-1"
-                          >
-                            Call Out
-                          </button>
+                  {myAssignments.upcoming.map((a) => {
+                    const badge = getStatusBadge(a);
+                    const canWithdrawJob = canWithdraw(a);
+                    
+                    return (
+                      <div key={a.id} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{a.class_name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-600">{a.school_name || a.school} • Room {a.room}</div>
+                            <div className="text-xs text-gray-500 mt-1">{formatDate(a.date)} • {formatTime(a.start_time)} - {formatTime(a.end_time)}</div>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <span className="text-sm font-medium text-blue-600">${(a.pay || 0).toFixed(2)}</span>
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => {
+                                  handleViewDetails(a.coverage_request_id || a.id);
+                                  setShowUpcomingModal(false);
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-700"
+                              >
+                                Details
+                              </button>
+                              {canWithdrawJob ? (
+                                <button
+                                  onClick={() => {
+                                    setWithdrawJob(a);
+                                    setShowWithdrawModal(true);
+                                    setShowUpcomingModal(false);
+                                  }}
+                                  className="text-xs text-red-600 hover:text-red-700"
+                                >
+                                  Withdraw
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setCallOutJob(a);
+                                    setShowCallOutModal(true);
+                                    setShowUpcomingModal(false);
+                                  }}
+                                  className="text-xs text-orange-600 hover:text-orange-700"
+                                >
+                                  Call Out
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
