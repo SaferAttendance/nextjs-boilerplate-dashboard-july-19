@@ -98,7 +98,9 @@ export default function AdminCoverageClient({
 }) {
   const initial = useMemo(() => (fullName || 'Admin').split(' ')[0], [fullName]);
 
-  const safeSchool = schoolCode || '';
+// Track the active school for filtering (can be 'all' or specific school code)
+  const [activeSchool, setActiveSchool] = useState<string>(schoolCode || '');
+  const safeSchool = activeSchool === 'all' ? '' : (activeSchool || schoolCode || '');
   const safeDistrict = districtCode || '';
 
   const {
@@ -529,9 +531,10 @@ useEffect(() => {
         <div className="flex items-center gap-2">
           {/* School Selector (SNIPPET 4) */}
                    {/* School Selector */}
-          <SchoolSelector 
+         <SchoolSelector 
             onSchoolChange={(newSchoolCode) => {
               setSelectedSchool(newSchoolCode);
+              setActiveSchool(newSchoolCode);
               refreshData();
             }} 
           />
