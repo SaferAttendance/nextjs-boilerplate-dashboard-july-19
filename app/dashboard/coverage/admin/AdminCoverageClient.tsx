@@ -136,32 +136,108 @@ export default function AdminCoverageClient({
   const [showApplicantsModal, setShowApplicantsModal] = useState(false);
   const [showCoverageDetailsModal, setShowCoverageDetailsModal] = useState<number | null>(null);
 
+  // School schedule state (SNIPPET 1)
+  const [schools, setSchools] = useState<{ school_code: string; school_name: string; school_type: string; start_time: string; end_time: string; total_periods: number; is_default: boolean }[]>([]);
+  const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [schoolScheduleLoading, setSchoolScheduleLoading] = useState(true);
+
   // Applicants data
   const [applicants, setApplicants] = useState<SubstituteApplicant[]>([]);
   const [applicantsCounts, setApplicantsCounts] = useState({ pending: 0, approved: 0, denied: 0, total: 0 });
   const [applicantsLoading, setApplicantsLoading] = useState(false);
 
-  // Countdown (UI-only for now)
-  const [urgentMM, setUrgentMM] = useState(42);
-  const [urgentSS, setUrgentSS] = useState(15);
-
+  // Fetch schools for this admin (SNIPPET 2)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setUrgentSS((s) => {
-        if (urgentMM <= 0 && s <= 0) return 0;
-        if (s > 0) return s - 1;
-        setUrgentMM((m) => (m > 0 ? m - 1 : 0));
-        return 59;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [urgentMM]);
+    async function fetchMySchools() {
+      const email = document.cookie.split('; ').find(row => row.startsWith('email='))?.split('=')[1];
+      if (!email) {
+        setSchoolScheduleLoading(false);
+        return;
+      }
+      try {
+        const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/admin/my-schools?email=${encodeURIComponent(email)}`);
+        const data = await response.json();
+        if (!data.error && data.schools) {
+          setSchools(data.schools);
+          const defaultSchool = data.schools.find((s: any) => s.is_default) || data.schools[0];
+          if (defaultSchool) {
+            setSelectedSchool(defaultSchool.school_code);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch schools:', e);
+      } finally {
+        setSchoolScheduleLoading(false);
+      }
+    }
+    fetchMySchools();
+  }, []);
 
-  const urgentTimerText = useMemo(() => {
-    const mm = String(Math.max(0, urgentMM)).padStart(2, '0');
-    const ss = String(Math.max(0, urgentSS)).padStart(2, '0');
-    return urgentMM <= 0 && urgentSS <= 0 ? 'OVERDUE' : `${mm}:${ss}`;
-  }, [urgentMM, urgentSS]);
+  // Smart countdown based on school schedule (SNIPPET 3)
+  const [countdownText, setCountdownText] = useState('Loading...');
+  
+  useEffect(() => {
+    const currentSchool = schools.find(s => s.school_code === selectedSchool);
+    if (!currentSchool) {
+      setCountdownText('Select a school');
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+      
+      // Check if weekend
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        setCountdownText(`School resumes Monday at ${currentSchool.start_time}`);
+        return;
+      }
+
+      // Parse school times
+      const [startH, startM] = currentSchool.start_time.split(':').map(Number);
+      const [endH, endM] = currentSchool.end_time.split(':').map(Number);
+      
+      const schoolStart = new Date(now);
+      schoolStart.setHours(startH, startM, 0, 0);
+      
+      const schoolEnd = new Date(now);
+      schoolEnd.setHours(endH, endM, 0, 0);
+
+      if (now < schoolStart) {
+        // Before school starts
+        const diff = schoolStart.getTime() - now.getTime();
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        setCountdownText(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+      } else if (now > schoolEnd) {
+        // After school ends
+        setCountdownText(`School day ended`);
+      } else {
+        // During school hours - calculate next period
+        const periodDuration = (endH * 60 + endM - startH * 60 - startM) / currentSchool.total_periods;
+        const minutesSinceStart = (now.getHours() * 60 + now.getMinutes()) - (startH * 60 + startM);
+        const currentPeriod = Math.floor(minutesSinceStart / periodDuration) + 1;
+        const nextPeriodStart = startH * 60 + startM + (currentPeriod * periodDuration);
+        const nextPeriodDate = new Date(now);
+        nextPeriodDate.setHours(Math.floor(nextPeriodStart / 60), nextPeriodStart % 60, 0, 0);
+        
+        if (currentPeriod >= currentSchool.total_periods) {
+          setCountdownText('Last period');
+        } else {
+          const diff = nextPeriodDate.getTime() - now.getTime();
+          const mins = Math.floor(diff / 60000);
+          const secs = Math.floor((diff % 60000) / 1000);
+          setCountdownText(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+        }
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [schools, selectedSchool]);
+
+  const urgentTimerText = countdownText;
 
   function pushToast(message: string, type: 'success' | 'error' = 'success') {
     const id = Math.random().toString(36).slice(2);
@@ -395,11 +471,10 @@ export default function AdminCoverageClient({
     }
   }
 
-  // Handle viewing coverage details
+// Handle viewing coverage details
   function handleViewDetails(coverageId: number) {
     setShowCoverageDetailsModal(coverageId);
   }
-
   return (
     <>
       {/* top status / config */}
@@ -413,8 +488,21 @@ export default function AdminCoverageClient({
             <div className="font-medium text-gray-900">{fullName || 'Admin'}</div>
           </div>
         </div>
-
         <div className="flex items-center gap-2">
+          {/* School Selector (SNIPPET 4) */}
+          {schools.length > 1 && (
+            <select
+              value={selectedSchool}
+              onChange={(e) => setSelectedSchool(e.target.value)}
+              className="px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 hover:bg-gray-50"
+            >
+              {schools.map((school) => (
+                <option key={school.school_code} value={school.school_code}>
+                  {school.school_name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => refreshData()}
             className="px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 hover:bg-gray-50"
@@ -423,26 +511,22 @@ export default function AdminCoverageClient({
           </button>
         </div>
       </div>
-
       {(!schoolCode || !districtCode) && (
         <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
           Missing <b>district_code</b> or <b>school_code</b> cookies. The admin page will load, but Xano calls
           may fail until those cookies are set.
         </div>
       )}
-
       {loading && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
           Loading live coverage data…
         </div>
       )}
-
       {error && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       )}
-
       {/* Main Admin View Content */}
       <AdminView
         uncoveredCount={uncoveredCount}
