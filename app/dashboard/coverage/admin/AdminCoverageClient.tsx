@@ -146,32 +146,70 @@ export default function AdminCoverageClient({
   const [applicantsCounts, setApplicantsCounts] = useState({ pending: 0, approved: 0, denied: 0, total: 0 });
   const [applicantsLoading, setApplicantsLoading] = useState(false);
 
-  // Fetch schools for this admin (SNIPPET 2)
-  useEffect(() => {
-    async function fetchMySchools() {
-      const email = document.cookie.split('; ').find(row => row.startsWith('email='))?.split('=')[1];
-      if (!email) {
-        setSchoolScheduleLoading(false);
-        return;
-      }
-      try {
-        const response = await fetch(`https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/admin/my-schools?email=${encodeURIComponent(email)}`);
-        const data = await response.json();
-        if (!data.error && data.schools) {
-          setSchools(data.schools);
-          const defaultSchool = data.schools.find((s: any) => s.is_default) || data.schools[0];
-          if (defaultSchool) {
-            setSelectedSchool(defaultSchool.school_code);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to fetch schools:', e);
-      } finally {
-        setSchoolScheduleLoading(false);
+  const [applicantsLoading, setApplicantsLoading] = useState(false);
+
+ // Fetch schools for this admin (SNIPPET 2) - UPDATED VERSION
+useEffect(() => {
+  async function fetchMySchools() {
+    // Try multiple ways to get the email
+    let email = '';
+    
+    // Method 1: Direct cookie access
+    const cookies = document.cookie.split('; ');
+    for (const cookie of cookies) {
+      if (cookie.startsWith('email=')) {
+        email = decodeURIComponent(cookie.split('=')[1]);
+        break;
       }
     }
-    fetchMySchools();
-  }, []);
+    
+    // Method 2: If still not found, try looking for encoded version
+    if (!email) {
+      for (const cookie of cookies) {
+        if (cookie.includes('email')) {
+          console.log('Found cookie with email:', cookie);
+        }
+      }
+    }
+    
+    console.log('All cookies:', document.cookie);
+    console.log('Extracted email:', email);
+    
+    if (!email) {
+      console.error('No email cookie found');
+      setSchoolScheduleLoading(false);
+      return;
+    }
+    
+    try {
+      const url = `https://xgeu-jqgf-nnju.n7e.xano.io/api:aeQ3kHz2/admin/my-schools?email=${encodeURIComponent(email)}`;
+      console.log('Fetching schools from:', url);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('Schools API response:', data);
+      
+      if (!data.error && data.schools) {
+        setSchools(data.schools);
+        const defaultSchool = data.schools.find((s: any) => s.is_default) || data.schools[0];
+        if (defaultSchool) {
+          setSelectedSchool(defaultSchool.school_code);
+          console.log('Selected default school:', defaultSchool.school_code);
+        }
+      } else {
+        console.error('Schools API error:', data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch schools:', e);
+    } finally {
+      setSchoolScheduleLoading(false);
+    }
+  }
+  fetchMySchools();
+}, []);
+
+  // Smart countdown based on school schedule (SNIPPET 3)
 
   // Smart countdown based on school schedule (SNIPPET 3)
   const [countdownText, setCountdownText] = useState('Loading...');
