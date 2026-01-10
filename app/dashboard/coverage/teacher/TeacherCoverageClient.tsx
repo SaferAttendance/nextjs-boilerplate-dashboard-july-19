@@ -99,6 +99,23 @@ type TeacherInfo = {
   status: string | null;
 };
 
+// NEW: Type for call-outs
+type CallOut = {
+  id: number;
+  class_id: string;
+  class_name: string;
+  teacher_id: string;
+  teacher_name: string;
+  date: string;
+  status: 'uncovered' | 'covered' | 'pending' | 'completed';
+  substitute_id: string | null;
+  substitute_name: string | null;
+  reason: string;
+  notes: string;
+  school_code: string;
+  created_at: number;
+};
+
 const XANO_TEACHER_API = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:t_J13ik1';
 
 const CALL_OUT_REASONS = [
@@ -146,6 +163,9 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
   const [rotationList, setRotationList] = useState<RotationTeacher[]>([]);
   const [earnings, setEarnings] = useState({ total: 0, pending: 0, verified: 0, paid: 0, totalJobs: 0, totalHours: 0 });
   
+  // NEW: Call-outs state
+  const [myCallOuts, setMyCallOuts] = useState<CallOut[]>([]);
+  
   // Filter states
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
@@ -174,6 +194,7 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
   const [showCoverageLogModal, setShowCoverageLogModal] = useState(false);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [showRotationModal, setShowRotationModal] = useState(false);
+  const [showCallOutsModal, setShowCallOutsModal] = useState(false);
   
   // Accept coverage states
   const [acceptedCoverage, setAcceptedCoverage] = useState<Set<number>>(new Set());
@@ -209,28 +230,28 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
     }
   }
 
-async function fetchSchedule() {
-  try {
-    const response = await fetch(`${XANO_TEACHER_API}/teachers/my-schedule?teacher_id=${teacherData.employeeId}&school_code=${teacherData.schoolCode}`);
-    const data = await response.json();
-    if (data.schedules) {
-      // Map snake_case API response to camelCase for frontend
-      const mappedSchedule = data.schedules.map((cls: any) => ({
-        id: cls.id,
-        period: cls.period,
-        className: cls.class_name,  // Map snake_case to camelCase
-        room: cls.room,
-        subject: cls.subject,
-        grade: cls.grade,
-        students: cls.students,
-        days: cls.days ? cls.days.split('') : [],  // Convert "MTWRF" to array
-      }));
-      setSchedule(mappedSchedule);
+  async function fetchSchedule() {
+    try {
+      const response = await fetch(`${XANO_TEACHER_API}/teachers/my-schedule?teacher_id=${teacherData.employeeId}&school_code=${teacherData.schoolCode}`);
+      const data = await response.json();
+      if (data.schedules) {
+        // Map snake_case API response to camelCase for frontend
+        const mappedSchedule = data.schedules.map((cls: any) => ({
+          id: cls.id,
+          period: cls.period,
+          className: cls.class_name,  // Map snake_case to camelCase
+          room: cls.room,
+          subject: cls.subject,
+          grade: cls.grade,
+          students: cls.students,
+          days: cls.days ? cls.days.split('') : [],  // Convert "MTWRF" to array
+        }));
+        setSchedule(mappedSchedule);
+      }
+    } catch (e) {
+      console.error('Failed to fetch schedule:', e);
     }
-  } catch (e) {
-    console.error('Failed to fetch schedule:', e);
   }
-}
 
   async function fetchMyRequests() {
     try {
@@ -282,6 +303,19 @@ async function fetchSchedule() {
     }
   }
 
+  // NEW: Fetch my call-outs
+  async function fetchMyCallOuts() {
+    try {
+      const response = await fetch(`${XANO_TEACHER_API}/teachers/my-call-outs?teacher_id=${teacherData.employeeId}`);
+      const data = await response.json();
+      if (data.success && data.call_outs) {
+        setMyCallOuts(data.call_outs);
+      }
+    } catch (e) {
+      console.error('Failed to fetch call-outs:', e);
+    }
+  }
+
   // Initial load
   useEffect(() => {
     let mounted = true;
@@ -297,6 +331,7 @@ async function fetchSchedule() {
         fetchCoverageLog(),
         fetchAvailableCoverage(),
         fetchRotationList(),
+        fetchMyCallOuts(), // NEW: Fetch call-outs
       ]);
       
       if (!mounted) return;
@@ -333,6 +368,7 @@ async function fetchSchedule() {
         setShowCallOutModal(false);
         resetCallOutForm();
         fetchAvailableCoverage();
+        fetchMyCallOuts(); // NEW: Refresh call-outs after creating one
       } else {
         pushToast(result.message || 'Failed to submit call out', 'error');
       }
@@ -582,6 +618,41 @@ This document is for tax preparation purposes.`;
     return myRequests.filter(r => r.status === 'pending').length;
   }, [myRequests]);
 
+  // NEW: Active call-outs (upcoming, not completed)
+  const activeCallOuts = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return myCallOuts.filter(c => {
+      const callOutDate = typeof c.date === 'string' ? c.date : new Date(c.date).toISOString().split('T')[0];
+      return callOutDate >= today && c.status !== 'completed';
+    });
+  }, [myCallOuts]);
+
+  // NEW: Check if a class/date has an active call-out
+  const hasCallOutForDate = useMemo(() => {
+    const callOutMap = new Map<string, CallOut>();
+    myCallOuts.forEach(c => {
+      const dateKey = typeof c.date === 'string' ? c.date : new Date(c.date).toISOString().split('T')[0];
+      // Store by date + class_name for specific periods, or just date for full day
+      if (c.class_name === 'Full Day Coverage') {
+        callOutMap.set(`${dateKey}-fullday`, c);
+      } else {
+        callOutMap.set(`${dateKey}-${c.class_name}`, c);
+      }
+    });
+    return callOutMap;
+  }, [myCallOuts]);
+
+  // NEW: Check if schedule item has call-out on selected date
+  function getCallOutForClass(period: number, date: string): CallOut | null {
+    // Check for full day call-out first
+    const fullDayCallOut = hasCallOutForDate.get(`${date}-fullday`);
+    if (fullDayCallOut) return fullDayCallOut;
+    
+    // Check for specific period call-out
+    const periodCallOut = hasCallOutForDate.get(`${date}-Period ${period}`);
+    return periodCallOut || null;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -652,10 +723,15 @@ This document is for tax preparation purposes.`;
               <h3 className="text-xs font-medium text-gray-500 mb-1">Rotation Position</h3>
               <div className="text-2xl font-bold text-purple-600">#{myRotationPosition || '-'}</div>
             </button>
-            <div className="bg-white rounded-xl shadow-sm border p-5">
-              <h3 className="text-xs font-medium text-gray-500 mb-1">Days Since Last</h3>
-              <div className="text-2xl font-bold text-gray-900">{teacherInfo?.days_since_last || 0}</div>
-            </div>
+            <button
+              onClick={() => setShowCallOutsModal(true)}
+              className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow"
+            >
+              <h3 className="text-xs font-medium text-gray-500 mb-1">Active Call-Outs</h3>
+              <div className={`text-2xl font-bold ${activeCallOuts.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                {activeCallOuts.length}
+              </div>
+            </button>
             <button
               onClick={() => setShowRequestsModal(true)}
               className="text-left bg-white rounded-xl shadow-sm border p-5 hover:shadow-md transition-shadow"
@@ -671,6 +747,76 @@ This document is for tax preparation purposes.`;
               <div className="text-2xl font-bold text-green-600">{earnings.totalJobs}</div>
             </button>
           </div>
+
+          {/* NEW: My Call-Outs Block */}
+          {activeCallOuts.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-red-900">📋 My Active Call-Outs</h3>
+                  <p className="text-sm text-red-700">Classes you&apos;ve called out of</p>
+                </div>
+                <button
+                  onClick={() => setShowCallOutsModal(true)}
+                  className="text-sm text-red-600 hover:text-red-800 font-medium"
+                >
+                  View All →
+                </button>
+              </div>
+              <div className="space-y-3">
+                {activeCallOuts.slice(0, 3).map((callOut) => (
+                  <div
+                    key={callOut.id}
+                    className={`flex items-center justify-between p-4 rounded-lg border ${
+                      callOut.status === 'covered' 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-white border-red-200'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        callOut.status === 'covered' ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        {callOut.status === 'covered' ? (
+                          <span className="text-green-600">✓</span>
+                        ) : (
+                          <span className="text-red-600">!</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">{callOut.class_name}</div>
+                        <div className="text-sm text-gray-600">
+                          {formatDate(callOut.date)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        callOut.status === 'covered' 
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {callOut.status === 'covered' ? '✓ Covered' : '⏳ Uncovered'}
+                      </span>
+                      {callOut.substitute_name && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Sub: {callOut.substitute_name}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {activeCallOuts.length > 3 && (
+                  <button
+                    onClick={() => setShowCallOutsModal(true)}
+                    className="w-full text-center text-sm text-red-600 hover:text-red-800 py-2"
+                  >
+                    +{activeCallOuts.length - 3} more call-outs
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Call Out Actions */}
           <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-5">
@@ -712,20 +858,27 @@ This document is for tax preparation purposes.`;
           <div className="bg-white rounded-xl shadow-sm border p-4">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Select Date to View Schedule</h3>
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {upcomingDates.map((d) => (
-                <button
-                  key={d.date}
-                  onClick={() => setSelectedDate(d.date)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    selectedDate === d.date
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <div>{d.dayName}</div>
-                  <div className="text-xs opacity-80">{d.dateFormatted}</div>
-                </button>
-              ))}
+              {upcomingDates.map((d) => {
+                const hasCallOut = hasCallOutForDate.has(`${d.date}-fullday`) || 
+                  schedule.some(cls => hasCallOutForDate.has(`${d.date}-Period ${cls.period}`));
+                return (
+                  <button
+                    key={d.date}
+                    onClick={() => setSelectedDate(d.date)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors relative ${
+                      selectedDate === d.date
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <div>{d.dayName}</div>
+                    <div className="text-xs opacity-80">{d.dateFormatted}</div>
+                    {hasCallOut && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -739,6 +892,7 @@ This document is for tax preparation purposes.`;
               <button
                 onClick={() => {
                   fetchSchedule();
+                  fetchMyCallOuts();
                   pushToast('Schedule refreshed!', 'success');
                 }}
                 className="text-sm text-purple-600 hover:text-purple-700"
@@ -755,44 +909,89 @@ This document is for tax preparation purposes.`;
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {schedule.sort((a, b) => a.period - b.period).map((cls) => (
-                    <div
-                      key={cls.id}
-                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border hover:shadow-sm transition-shadow"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <span className="text-lg font-bold text-purple-600">{cls.period}</span>
-                        </div>
-                        <div>
-                          <div className="font-medium text-gray-900">{cls.className}</div>
-                          <div className="text-sm text-gray-600">
-                            {cls.subject} • Grade {cls.grade} • Room {cls.room}
-                          </div>
-                          <div className="text-xs text-gray-500">{cls.students} students</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setCallOutType('class');
-                          setCallOutDate(selectedDate);
-                          setCallOutPeriod(cls.period);
-                          setCallOutClass(cls);
-                          setShowCallOutModal(true);
-                        }}
-                        className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                  {schedule.sort((a, b) => a.period - b.period).map((cls) => {
+                    const callOut = getCallOutForClass(cls.period, selectedDate);
+                    const hasCallOut = !!callOut;
+                    
+                    return (
+                      <div
+                        key={cls.id}
+                        className={`flex items-center justify-between p-4 rounded-lg border transition-shadow ${
+                          hasCallOut 
+                            ? callOut.status === 'covered'
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-red-50 border-red-200'
+                            : 'bg-gray-50 border-gray-100 hover:shadow-sm'
+                        }`}
                       >
-                        Call Out
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            hasCallOut
+                              ? callOut.status === 'covered' ? 'bg-green-100' : 'bg-red-100'
+                              : 'bg-purple-100'
+                          }`}>
+                            <span className={`text-lg font-bold ${
+                              hasCallOut
+                                ? callOut.status === 'covered' ? 'text-green-600' : 'text-red-600'
+                                : 'text-purple-600'
+                            }`}>{cls.period}</span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{cls.className}</span>
+                              {hasCallOut && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  callOut.status === 'covered'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {callOut.status === 'covered' ? '✓ Covered' : '⚠ Called Out'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {cls.subject} • Grade {cls.grade} • Room {cls.room}
+                            </div>
+                            <div className="text-xs text-gray-500">{cls.students} students</div>
+                            {hasCallOut && callOut.substitute_name && (
+                              <div className="text-xs text-green-600 mt-1">
+                                Sub: {callOut.substitute_name}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {!hasCallOut ? (
+                          <button
+                            onClick={() => {
+                              setCallOutType('class');
+                              setCallOutDate(selectedDate);
+                              setCallOutPeriod(cls.period);
+                              setCallOutClass(cls);
+                              setShowCallOutModal(true);
+                            }}
+                            className="px-3 py-1.5 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                          >
+                            Call Out
+                          </button>
+                        ) : (
+                          <div className="text-right">
+                            <div className={`text-sm font-medium ${
+                              callOut.status === 'covered' ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {callOut.status === 'covered' ? 'Coverage Arranged' : 'Needs Coverage'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
           {/* Quick Full Day Call Out */}
-          {schedule.length > 0 && (
+          {schedule.length > 0 && !hasCallOutForDate.has(`${selectedDate}-fullday`) && (
             <div className="bg-white rounded-xl shadow-sm border p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -1585,6 +1784,77 @@ This document is for tax preparation purposes.`;
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Call-Outs Modal */}
+      {showCallOutsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b flex justify-between items-center bg-red-50">
+              <div>
+                <h2 className="font-semibold text-gray-900">📋 My Call-Outs ({myCallOuts.length})</h2>
+                <p className="text-sm text-gray-600">Classes you&apos;ve called out of</p>
+              </div>
+              <button onClick={() => setShowCallOutsModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {myCallOuts.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-8">No call-outs yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myCallOuts.map((callOut) => {
+                    const isUpcoming = new Date(callOut.date) >= new Date(new Date().toISOString().split('T')[0]);
+                    return (
+                      <div
+                        key={callOut.id}
+                        className={`p-4 rounded-lg border ${
+                          callOut.status === 'covered' ? 'bg-green-50 border-green-200' :
+                          callOut.status === 'completed' ? 'bg-gray-50 border-gray-200' :
+                          'bg-yellow-50 border-yellow-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{callOut.class_name}</span>
+                              {isUpcoming && callOut.status !== 'completed' && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                  Upcoming
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              {formatDate(callOut.date)}
+                            </div>
+                            {callOut.substitute_name && (
+                              <div className="text-sm text-green-600 mt-1">
+                                ✓ Covered by: {callOut.substitute_name}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              callOut.status === 'covered' ? 'bg-green-100 text-green-800' :
+                              callOut.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                              'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {callOut.status === 'covered' ? '✓ Covered' : 
+                               callOut.status === 'completed' ? '✓ Completed' : 
+                               '⏳ Uncovered'}
+                            </span>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Created {formatDate(callOut.created_at)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
