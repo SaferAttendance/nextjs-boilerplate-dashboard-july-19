@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import SchoolSelector from '@/components/SchoolSelector';
 
 type Toast = { id: string; message: string; type: 'success' | 'error' };
 
@@ -579,8 +580,21 @@ This document is for tax preparation purposes.`;
     );
   }
 
-  return (
+ return (
     <div className="space-y-6">
+      {/* Header with School Selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Welcome, {teacherData.fullName}</h1>
+          <p className="text-sm text-gray-500">{teacherData.department} • {teacherData.employeeId}</p>
+        </div>
+        <SchoolSelector 
+          onSchoolChange={() => {
+            window.location.reload();
+          }} 
+        />
+      </div>
+
       {/* Tab Navigation */}
       <div className="flex space-x-1 bg-gray-100 rounded-lg p-1 w-fit">
         <button
