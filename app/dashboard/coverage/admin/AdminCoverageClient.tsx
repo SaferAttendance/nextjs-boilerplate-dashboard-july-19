@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { adminAPI, CoverageHistoryEntry, CoverageRequest, Teacher as XanoTeacher } from '@/lib/xano/api';
 import { useAdminDashboard } from '@/lib/hooks/useCoverage';
+import SchoolSelector from '@/components/SchoolSelector';
 
 type Toast = { id: string; message: string; type: 'success' | 'error' };
 
@@ -527,19 +528,13 @@ useEffect(() => {
         </div>
         <div className="flex items-center gap-2">
           {/* School Selector (SNIPPET 4) */}
-          {schools.length > 1 && (
-            <select
-              value={selectedSchool}
-              onChange={(e) => setSelectedSchool(e.target.value)}
-              className="px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 hover:bg-gray-50"
-            >
-              {schools.map((school) => (
-                <option key={school.school_code} value={school.school_code}>
-                  {school.school_name}
-                </option>
-              ))}
-            </select>
-          )}
+                   {/* School Selector */}
+          <SchoolSelector 
+            onSchoolChange={(newSchoolCode) => {
+              setSelectedSchool(newSchoolCode);
+              refreshData();
+            }} 
+          />
           <button
             onClick={() => refreshData()}
             className="px-3 py-2 rounded-lg text-sm bg-white border border-gray-200 hover:bg-gray-50"
