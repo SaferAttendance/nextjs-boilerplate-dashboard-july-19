@@ -4,22 +4,36 @@ import TeacherCoverageClient from './TeacherCoverageClient';
 
 export const runtime = 'nodejs';
 
-const XANO_API = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:t_J13ik1';
+// Use the EXISTING working endpoint that already returns employee_id
+const XANO_USER_API = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:gwgLYEsU';
 
-// Helper function to fetch employee_id from Xano based on email
-async function fetchEmployeeId(email: string): Promise<string | null> {
+// Helper function to fetch user data (including employee_id) from Xano based on email
+async function fetchUserData(email: string): Promise<{
+  employee_id?: string;
+  full_name?: string;
+  role?: string;
+  school_code?: string;
+  district_code?: string;
+} | null> {
   try {
     const response = await fetch(
-      `${XANO_API}/users/lookup-employee-id?email=${encodeURIComponent(email)}`,
+      `${XANO_USER_API}/Verify_User_Email_and_Role_From_Allowed_Users?email=${encodeURIComponent(email)}`,
       { cache: 'no-store' }
     );
     const data = await response.json();
-    if (data.success && data.user?.employee_id) {
-      return data.user.employee_id;
+    // This endpoint returns an array, get the first user
+    if (Array.isArray(data) && data.length > 0 && data[0]?.employee_id) {
+      return {
+        employee_id: data[0].employee_id,
+        full_name: data[0].full_name,
+        role: data[0].role,
+        school_code: data[0].school_code,
+        district_code: data[0].district_code,
+      };
     }
     return null;
   } catch (error) {
-    console.error('Failed to fetch employee_id from Xano:', error);
+    console.error('Failed to fetch user data from Xano:', error);
     return null;
   }
 }
@@ -42,31 +56,44 @@ export default async function TeacherCoveragePage() {
     redirect('/admin/login');
   }
   
-  // Get user profile from cookies
+  // Get user profile from cookies (these may be incomplete or missing)
   const profileRole = jar.get('role')?.value;
-  const profileFullName = jar.get('full_name')?.value || jar.get('fullname')?.value || 'Teacher';
-  const profileDistrictCode = jar.get('district_code')?.value || '0001';
-  const profileSchoolCode = jar.get('school_code')?.value || 'blueberry';
+  const profileFullName = jar.get('full_name')?.value || jar.get('fullname')?.value;
+  const profileDistrictCode = jar.get('district_code')?.value;
+  const profileSchoolCode = jar.get('school_code')?.value;
   const profileEmail = jar.get('email')?.value;
-  const profileDepartment = jar.get('department')?.value || 'General';
+  const profileDepartment = jar.get('department')?.value;
   
   // Try to get employee_id from cookies first
   let employeeId = jar.get('employee_id')?.value || jar.get('employeeId')?.value;
   
+  // Initialize variables for user data
+  let fullName = profileFullName || 'Teacher';
+  let schoolCode = profileSchoolCode || 'blueberry';
+  let districtCode = profileDistrictCode || '0001';
+  let department = profileDepartment || 'General';
+  
   // If no employee_id in cookies, fetch from Xano based on email
-  if (!employeeId && (profileEmail || email)) {
+  // This also gets the most up-to-date user data from the database
+  if (!employeeId) {
     const userEmail = profileEmail || email;
-    const xanoEmployeeId = await fetchEmployeeId(userEmail!);
-    if (xanoEmployeeId) {
-      employeeId = xanoEmployeeId;
-      console.log(`Fetched employee_id from Xano for ${userEmail}: ${employeeId}`);
+    if (userEmail) {
+      const userData = await fetchUserData(userEmail);
+      if (userData) {
+        employeeId = userData.employee_id;
+        // Also update other fields from database if available
+        if (userData.full_name) fullName = userData.full_name;
+        if (userData.school_code) schoolCode = userData.school_code;
+        if (userData.district_code) districtCode = userData.district_code;
+        console.log(`Fetched user data from Xano for ${userEmail}: employee_id=${employeeId}`);
+      }
     }
   }
   
   // Fallback to generated ID only if all else fails
   if (!employeeId) {
     employeeId = `TEACH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    console.warn(`Generated fallback employee_id: ${employeeId}`);
+    console.warn(`Generated fallback employee_id: ${employeeId} - User may not have schedule data`);
   }
   
   // Ensure teacher role (allow admin for testing)
@@ -78,11 +105,11 @@ export default async function TeacherCoveragePage() {
   // Pass essential data to client component
   const teacherData = {
     email: profileEmail || email,
-    fullName: profileFullName,
+    fullName: fullName,
     employeeId: employeeId,
-    schoolCode: profileSchoolCode,
-    districtCode: profileDistrictCode,
-    department: profileDepartment,
+    schoolCode: schoolCode,
+    districtCode: districtCode,
+    department: department,
   };
   
   return (
@@ -112,7 +139,7 @@ export default async function TeacherCoveragePage() {
             <div className="hidden sm:flex items-center space-x-2">
               <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" />
               <span className="text-sm text-gray-600">
-                {profileFullName} | {profileDepartment}
+                {fullName} | {department}
               </span>
             </div>
           </div>
