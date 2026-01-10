@@ -146,7 +146,6 @@ export default function AdminCoverageClient({
   const [applicantsCounts, setApplicantsCounts] = useState({ pending: 0, approved: 0, denied: 0, total: 0 });
   const [applicantsLoading, setApplicantsLoading] = useState(false);
 
-  const [applicantsLoading, setApplicantsLoading] = useState(false);
 
  // Fetch schools for this admin (SNIPPET 2) - UPDATED VERSION
 useEffect(() => {
