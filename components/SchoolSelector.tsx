@@ -157,8 +157,47 @@ export default function SchoolSelector({ onSchoolChange, className = '' }: Schoo
             </p>
           </div>
 
-          {/* School List */}
+        {/* School List */}
           <div className="max-h-72 overflow-y-auto">
+            {/* All Schools Option */}
+            <button
+              onClick={() => {
+                setSelectedSchool('all');
+                setSchoolCookie('all');
+                setIsOpen(false);
+                if (onSchoolChange) {
+                  onSchoolChange('all', { 
+                    school_code: 'all', 
+                    school_name: 'All Schools', 
+                    school_type: 'all',
+                    start_time: '07:30',
+                    end_time: '15:00',
+                    total_periods: 8,
+                    is_default: false 
+                  });
+                }
+              }}
+              className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center justify-between ${
+                selectedSchool === 'all' ? 'bg-indigo-50' : ''
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <p className={`font-medium ${selectedSchool === 'all' ? 'text-indigo-700' : 'text-gray-900'}`}>
+                  📊 All Schools
+                </p>
+                <p className="text-xs text-gray-500">
+                  View combined data across all {schools.length} schools
+                </p>
+              </div>
+              {selectedSchool === 'all' && (
+                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+            
+            <div className="border-t border-gray-100 my-1"></div>
+            
             {schools.map((school) => (
               <button
                 key={school.school_code}
