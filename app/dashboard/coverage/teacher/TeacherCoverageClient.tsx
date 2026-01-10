@@ -209,15 +209,28 @@ export default function TeacherCoverageClient({ teacherData }: { teacherData: Te
     }
   }
 
-  async function fetchSchedule() {
-    try {
-      const response = await fetch(`${XANO_TEACHER_API}/teachers/my-schedule?teacher_id=${teacherData.employeeId}`);
-      const data = await response.json();
-      if (data.schedules) setSchedule(data.schedules);
-    } catch (e) {
-      console.error('Failed to fetch schedule:', e);
+async function fetchSchedule() {
+  try {
+    const response = await fetch(`${XANO_TEACHER_API}/teachers/my-schedule?teacher_id=${teacherData.employeeId}&school_code=${teacherData.schoolCode}`);
+    const data = await response.json();
+    if (data.schedules) {
+      // Map snake_case API response to camelCase for frontend
+      const mappedSchedule = data.schedules.map((cls: any) => ({
+        id: cls.id,
+        period: cls.period,
+        className: cls.class_name,  // Map snake_case to camelCase
+        room: cls.room,
+        subject: cls.subject,
+        grade: cls.grade,
+        students: cls.students,
+        days: cls.days ? cls.days.split('') : [],  // Convert "MTWRF" to array
+      }));
+      setSchedule(mappedSchedule);
     }
+  } catch (e) {
+    console.error('Failed to fetch schedule:', e);
   }
+}
 
   async function fetchMyRequests() {
     try {
