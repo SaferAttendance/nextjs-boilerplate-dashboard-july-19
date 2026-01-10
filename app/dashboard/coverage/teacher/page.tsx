@@ -4,6 +4,26 @@ import TeacherCoverageClient from './TeacherCoverageClient';
 
 export const runtime = 'nodejs';
 
+const XANO_API = 'https://xgeu-jqgf-nnju.n7e.xano.io/api:t_J13ik1';
+
+// Helper function to fetch employee_id from Xano based on email
+async function fetchEmployeeId(email: string): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `${XANO_API}/users/lookup-employee-id?email=${encodeURIComponent(email)}`,
+      { cache: 'no-store' }
+    );
+    const data = await response.json();
+    if (data.success && data.user?.employee_id) {
+      return data.user.employee_id;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to fetch employee_id from Xano:', error);
+    return null;
+  }
+}
+
 export default async function TeacherCoveragePage() {
   const jar = await cookies();
   
@@ -29,7 +49,25 @@ export default async function TeacherCoveragePage() {
   const profileSchoolCode = jar.get('school_code')?.value || 'blueberry';
   const profileEmail = jar.get('email')?.value;
   const profileDepartment = jar.get('department')?.value || 'General';
-  const employeeId = jar.get('employee_id')?.value || jar.get('employeeId')?.value || `TEACH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  
+  // Try to get employee_id from cookies first
+  let employeeId = jar.get('employee_id')?.value || jar.get('employeeId')?.value;
+  
+  // If no employee_id in cookies, fetch from Xano based on email
+  if (!employeeId && (profileEmail || email)) {
+    const userEmail = profileEmail || email;
+    const xanoEmployeeId = await fetchEmployeeId(userEmail!);
+    if (xanoEmployeeId) {
+      employeeId = xanoEmployeeId;
+      console.log(`Fetched employee_id from Xano for ${userEmail}: ${employeeId}`);
+    }
+  }
+  
+  // Fallback to generated ID only if all else fails
+  if (!employeeId) {
+    employeeId = `TEACH-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    console.warn(`Generated fallback employee_id: ${employeeId}`);
+  }
   
   // Ensure teacher role (allow admin for testing)
   const normalizedRole = (profileRole || '').toLowerCase();
